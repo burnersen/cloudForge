@@ -34,14 +34,14 @@ jobs:
       TAG: ${{ inputs.tag || github.ref_name }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
           # Die Nachricht des annotierten Tags wird zum Release-Text, und die
           # gibt es nur in einer Kopie, die die Tag-Objekte mitbringt.
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # Bewusst NICHT go-version-file: "go 1.22" in go.mod ist die älteste
           # Version, mit der der Quelltext baut - nicht die, mit der ein
