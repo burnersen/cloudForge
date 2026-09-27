@@ -25,7 +25,26 @@ const (
 	pixelFormat8Bit  = "yuv420p"
 	pixelFormat10Bit = "yuv420p10le"
 	videoCodec       = "libsvtav1"
-	tonCodec         = "libopus"
+)
+
+// Videospuren werden mit grossem V gewählt: das sind nur die echten Filme,
+// ohne eingebettete Titelbilder (Vorschaubild einer MP4, cover.jpg einer
+// MKV). Mit kleinem v wollte SVT-AV1 auch das Titelbild umwandeln und brach
+// ab ("maximum allowed frame rate is 240 fps", getestet 27.09.2026). Das
+// Titelbild entfällt damit — MKV kann es über ffmpeg ohnehin nicht als echtes
+// Titelbild ablegen, nur als zweite Videospur mit einem einzigen Bild.
+const (
+	alleFilmspuren       = "0:V"
+	ersteFilmspur        = "0:V:0"
+	ersteFilmspurAuswahl = "V:0" // ohne Dateinummer: ffprobe -select_streams, Filter-Eingänge
+)
+
+// Untertitel im MP4-Textformat kann MKV nicht aufnehmen: ffmpeg bricht dann
+// sofort ab, beim Umwandeln wie beim Umpacken (getestet 27.09.2026). Sie
+// werden deshalb nach SRT übertragen — Text und Zeiten bleiben gleich.
+const (
+	untertitelMP4Text = "mov_text"
+	untertitelSRT     = "srt"
 )
 
 // zielPixelFormat liefert das Pixelformat zur eingestellten Bittiefe.
@@ -56,9 +75,10 @@ type EncodeAuftrag struct {
 	// beim Umwandeln, damit das Ergebnis dieselben Spuren hat.
 	Umpacken bool
 
-	// Tonspuren bestimmt je Spur, ob sie kopiert oder zu Opus gewandelt wird.
-	// Leer bedeutet: alles kopieren.
-	Tonspuren []Tonspur
+	// UntertitelCodecs nennt je Untertitelspur der Quelle ihr Format, in der
+	// Reihenfolge der Datei (aus VideoInfo). Danach richtet sich, welche
+	// Spur 1:1 kopiert und welche nach SRT übertragen wird.
+	UntertitelCodecs []string
 }
 
 // videoArgumente sind die Encoder-Einstellungen, die für jeden Lauf gelten —
@@ -88,24 +108,22 @@ func svtParameter(e Einstellungen) string {
 	return strings.Join(teile, ":")
 }
 
-// tonArgumente entscheidet je Tonspur zwischen Kopieren und Umwandeln.
-//
-// Kleine Spuren werden bewusst NICHT angefasst: ein zweites Mal verlustbehaftet
-// zu kodieren kostet Qualität und bringt dort keinen nennenswerten Platz.
-func tonArgumente(spuren []Tonspur, e Einstellungen) []string {
-	if len(spuren) == 0 {
-		return []string{"-c:a", "copy"}
+// untertitelArgumente kopiert jede Untertitelspur 1:1 — ausser dem
+// MP4-Textformat, das nach SRT übertragen wird (siehe untertitelMP4Text).
+// Jede Spur bekommt ihre eigene Angabe, damit keine allgemeine Regel eine
+// einzelne überdecken kann. Andere Formate (ASS mit Gestaltung, Bild-
+// Untertitel) kann MKV so aufnehmen, wie sie sind.
+func untertitelArgumente(codecs []string) []string {
+	if len(codecs) == 0 {
+		return []string{"-c:s", "copy"}
 	}
-
-	var args []string
-	for nummer, spur := range spuren {
-		ziel := fmt.Sprintf("-c:a:%d", nummer)
-		if spur.BitrateKbps() > e.TonSchwelleKbps {
-			args = append(args, ziel, tonCodec,
-				fmt.Sprintf("-b:a:%d", nummer), strconv.Itoa(e.TonZielKbps)+"k")
-		} else {
-			args = append(args, ziel, "copy")
+	args := make([]string, 0, 2*len(codecs))
+	for nummer, codec := range codecs {
+		behandlung := "copy"
+		if codec == untertitelMP4Text {
+			behandlung = untertitelSRT
 		}
+		args = append(args, fmt.Sprintf("-c:s:%d", nummer), behandlung)
 	}
 	return args
 }
@@ -115,14 +133,16 @@ func EncodeArgumente(auftrag EncodeAuftrag, e Einstellungen) []string {
 	args := []string{"-nostdin", "-y", "-i", auftrag.Quelle}
 
 	if auftrag.NurVideo {
-		args = append(args, "-map", "0:v:0", "-an", "-sn")
+		args = append(args, "-map", ersteFilmspur, "-an", "-sn")
 		args = append(args, videoArgumente(auftrag.CRF, e)...)
 		return append(args, auftrag.Ziel)
 	}
 
 	// Alle Spuren mitnehmen, aber an einer fehlenden Sorte nicht scheitern.
+	// Anhänge (Schriften für gestaltete Untertitel in MKV) gehören dazu —
+	// ohne sie zeigt ein Player die Untertitel in einer falschen Schrift.
 	args = append(args,
-		"-map", "0:v", "-map", "0:a?", "-map", "0:s?",
+		"-map", alleFilmspuren, "-map", "0:a?", "-map", "0:s?", "-map", "0:t?",
 		"-map_metadata", "0", "-map_chapters", "0",
 	)
 	if auftrag.Umpacken {
@@ -130,8 +150,12 @@ func EncodeArgumente(auftrag EncodeAuftrag, e Einstellungen) []string {
 	} else {
 		args = append(args, videoArgumente(auftrag.CRF, e)...)
 	}
-	args = append(args, tonArgumente(auftrag.Tonspuren, e)...)
-	args = append(args, "-c:s", "copy")
+	// Ton immer 1:1 (seit 0.14.0, Nutzerwunsch): ein zweites Mal
+	// verlustbehaftet zu kodieren kostet nur Qualität, und MKV nimmt jede
+	// Tonspur so auf, wie sie ist.
+	args = append(args, "-c:a", "copy")
+	args = append(args, untertitelArgumente(auftrag.UntertitelCodecs)...)
+	args = append(args, "-c:t", "copy")
 
 	return append(args, auftrag.Ziel)
 }
@@ -201,7 +225,7 @@ func fensterArgumente(quelle string, fenster []Fenster) []string {
 
 	var kette strings.Builder
 	for i := range fenster {
-		fmt.Fprintf(&kette, "[%d:v:0]", i)
+		fmt.Fprintf(&kette, "[%d:%s]", i, ersteFilmspurAuswahl)
 	}
 	fmt.Fprintf(&kette, "concat=n=%d:v=1:a=0[zusammen];[zusammen]setpts=PTS-STARTPTS[fertig]", len(fenster))
 

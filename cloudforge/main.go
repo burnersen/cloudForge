@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.13.0"
+const appVersion = "0.14.0"
 
 func main() {
 	err := starten()
@@ -65,11 +65,14 @@ func starten() error {
 
 	kopfAusgeben()
 
-	e, err := EinstellungenLaden(*iniPfad)
+	e, iniHinweise, err := EinstellungenLaden(*iniPfad)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("Einstellungen: %s\n", *iniPfad)
+	for _, hinweis := range iniHinweise {
+		fmt.Printf("  %s\n", hinweis)
+	}
 
 	// Starter und Protokoll brauchen kein ffmpeg — das darf auch gehen,
 	// bevor alles Weitere eingerichtet ist.
@@ -584,9 +587,6 @@ func fehlendeBausteine(ffmpegPfad string) ([]string, error) {
 	}
 	if !strings.Contains(string(encoder), "libsvtav1") {
 		fehlend = append(fehlend, "libsvtav1 (der AV1-Encoder)")
-	}
-	if !strings.Contains(string(encoder), "libopus") {
-		fehlend = append(fehlend, "libopus (fuer den Ton)")
 	}
 	return fehlend, nil
 }

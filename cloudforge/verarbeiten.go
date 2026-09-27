@@ -223,10 +223,10 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 	anz.Schritt(schrittWandeln, schritteGesamt, "Umwandeln")
 	lokalesErgebnis := filepath.Join(arbeitsplatz, "ergebnis.mkv")
 	auftrag := EncodeAuftrag{
-		Quelle:    lokaleQuelle,
-		Ziel:      lokalesErgebnis,
-		CRF:       autoCQ.CRF,
-		Tonspuren: info.Tonspuren,
+		Quelle:           lokaleQuelle,
+		Ziel:             lokalesErgebnis,
+		CRF:              autoCQ.CRF,
+		UntertitelCodecs: info.UntertitelCodecs,
 	}
 	if err := Kodieren(encodeCtx, auftrag, e, info.DauerSek, anz.Stand); err != nil {
 		return fehler("Umwandeln fehlgeschlagen", err)
@@ -349,7 +349,8 @@ func (a *Ablauf) umpackenUndAblegen(ctx context.Context, u umpackAuftrag) DateiE
 	// 3. Umpacken: Bild unverändert, Ton und Untertitel wie beim Umwandeln.
 	anz.Schritt(schrittWandeln, schritteGesamt, "Umpacken")
 	lokalesErgebnis := filepath.Join(u.arbeitsplatz, "umgepackt.mkv")
-	auftrag := EncodeAuftrag{Quelle: u.lokaleQuelle, Ziel: lokalesErgebnis, Tonspuren: u.info.Tonspuren, Umpacken: true}
+	auftrag := EncodeAuftrag{Quelle: u.lokaleQuelle, Ziel: lokalesErgebnis,
+		UntertitelCodecs: u.info.UntertitelCodecs, Umpacken: true}
 	if err := Kodieren(ctx, auftrag, e, u.info.DauerSek, anz.Stand); err != nil {
 		return fehler("Umpacken fehlgeschlagen", err)
 	}

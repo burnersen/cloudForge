@@ -110,8 +110,7 @@ ffmpeg_taugt() {
     filter=$("$programm" -hide_banner -filters 2>/dev/null) || return 1
     encoder=$("$programm" -hide_banner -encoders 2>/dev/null) || return 1
     grep -q libvmaf <<<"$filter" \
-        && grep -q libsvtav1 <<<"$encoder" \
-        && grep -q libopus <<<"$encoder"
+        && grep -q libsvtav1 <<<"$encoder"
 }
 
 text_laden() {
@@ -174,7 +173,7 @@ else
         || fehler "Im heruntergeladenen Paket fehlen ffmpeg oder ffprobe."
     ffmpeg_taugt "$BINORDNER/ffmpeg" \
         || fehler "Das geladene ffmpeg kann nicht alles, was CloudForge braucht" \
-                  "(libvmaf, libsvtav1, libopus)."
+                  "(libvmaf, libsvtav1)."
 
     for werkzeug in ffmpeg ffprobe; do
         cp "$BINORDNER/$werkzeug" "$WERKZEUGE/$werkzeug.neu" \
@@ -182,7 +181,7 @@ else
             && mv -f "$WERKZEUGE/$werkzeug.neu" "$WERKZEUGE/$werkzeug" \
             || fehler "$werkzeug liess sich nicht nach $WERKZEUGE kopieren."
     done
-    ok "$("$WERKZEUGE/ffmpeg" -hide_banner -version | head -1 | cut -d' ' -f1-3) mit libvmaf, SVT-AV1 und Opus"
+    ok "$("$WERKZEUGE/ffmpeg" -hide_banner -version | head -1 | cut -d' ' -f1-3) mit libvmaf und SVT-AV1"
 fi
 
 # ---------------------------------------------------------------------------

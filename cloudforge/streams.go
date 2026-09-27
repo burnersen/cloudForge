@@ -49,8 +49,11 @@ type VideoInfo struct {
 	VideoBitrateKbps   int
 	GeschaetzteBitrate bool
 
-	Tonspuren        []Tonspur
-	UntertitelAnzahl int
+	Tonspuren []Tonspur
+
+	// UntertitelCodecs nennt je Untertitelspur ihr Format (z. B. "subrip",
+	// "mov_text"), in der Reihenfolge der Datei.
+	UntertitelCodecs []string
 }
 
 // GesamtBitrateKbps ist die Bitrate der ganzen Datei.
@@ -142,7 +145,7 @@ func VorlaufVersteckt(ffprobePfad, dateiPfad string) (bool, error) {
 
 	befehl := exec.CommandContext(ctx, ffprobePfad,
 		"-v", "error",
-		"-select_streams", "v:0",
+		"-select_streams", ersteFilmspurAuswahl,
 		"-show_entries", "packet=flags",
 		"-read_intervals", "%+#"+strconv.Itoa(vorlaufPakete),
 		"-of", "csv=p=0",
@@ -207,7 +210,7 @@ func ausProbe(dateiPfad string, roh probeAusgabe) (VideoInfo, error) {
 			})
 
 		case "subtitle":
-			info.UntertitelAnzahl++
+			info.UntertitelCodecs = append(info.UntertitelCodecs, s.CodecName)
 		}
 	}
 

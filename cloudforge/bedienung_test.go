@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -70,7 +72,7 @@ func TestIniWertSetzenHaengtFehlendenSchluesselAn(t *testing.T) {
 	}
 
 	// Und die geänderte INI muss sich wieder einlesen lassen.
-	e, err := EinstellungenLaden(pfad)
+	e, _, err := EinstellungenLaden(pfad)
 	if err != nil {
 		t.Fatalf("geaenderte INI nicht lesbar: %v", err)
 	}
@@ -118,7 +120,7 @@ func TestKopierenMitMeldungKopiertVollstaendig(t *testing.T) {
 	var letzter Stand
 
 	err := kopierenMitMeldung(context.Background(), &ziel, bytes.NewReader(quelle),
-		int64(len(quelle)), func(s Stand) { letzter = s })
+		int64(len(quelle)), func(s Stand) { letzter = s }, new(atomic.Int64))
 	if err != nil {
 		t.Fatalf("unerwarteter Fehler: %v", err)
 	}
@@ -135,7 +137,7 @@ func TestKopierenMitMeldungHoertBeimAbbruchAuf(t *testing.T) {
 	abbrechen()
 
 	var ziel bytes.Buffer
-	err := kopierenMitMeldung(ctx, &ziel, strings.NewReader("Inhalt"), 6, nil)
+	err := kopierenMitMeldung(ctx, &ziel, strings.NewReader("Inhalt"), 6, nil, new(atomic.Int64))
 	if err != ErrAbgebrochen {
 		t.Errorf("ErrAbgebrochen erwartet, bekommen: %v", err)
 	}
@@ -163,6 +165,62 @@ func TestKopierenHinterlaesstBeimAbbruchNichts(t *testing.T) {
 	}
 	if _, err := os.Stat(quelle); err != nil {
 		t.Errorf("die QUELLE ist weg: %v", err)
+	}
+}
+
+// Hängt die Cloud, kehrt ein Lesen womöglich nie zurück. Der Wächter gibt
+// dann nach der Grenze auf, ohne auf die hängende Arbeit zu warten — und die
+// Arbeit bekommt einen abgebrochenen ctx, damit sie beim Aufwachen aufräumt.
+func TestStillstandWaechterGibtBeiHaengerAuf(t *testing.T) {
+	haengt := make(chan struct{}) // das Lesen, das nicht zurückkommt
+	defer close(haengt)
+	abgebrochen := make(chan struct{})
+
+	beginn := time.Now()
+	err := mitStillstandWaechter(context.Background(), 50*time.Millisecond, 5*time.Millisecond,
+		func(ctx context.Context, _ *atomic.Int64) error {
+			go func() { <-ctx.Done(); close(abgebrochen) }()
+			<-haengt
+			return nil
+		})
+	if !errors.Is(err, ErrStillstand) {
+		t.Fatalf("ErrStillstand erwartet, bekommen: %v", err)
+	}
+	if dauer := time.Since(beginn); dauer > 2*time.Second {
+		t.Errorf("der Waechter hat %v gewartet statt etwa 50 ms", dauer)
+	}
+	select {
+	case <-abgebrochen:
+	case <-time.After(time.Second):
+		t.Error("die haengende Arbeit hat keinen abgebrochenen ctx bekommen")
+	}
+}
+
+// Langsam, aber stetig ist kein Stillstand: Die Übertragung dauert hier
+// viermal so lang wie die Grenze, bewegt sich aber alle 10 ms.
+func TestStillstandWaechterLaesstLangsameUebertragungLaufen(t *testing.T) {
+	err := mitStillstandWaechter(context.Background(), 100*time.Millisecond, 5*time.Millisecond,
+		func(_ context.Context, fortschritt *atomic.Int64) error {
+			for block := int64(1); block <= 40; block++ {
+				time.Sleep(10 * time.Millisecond)
+				fortschritt.Store(block)
+			}
+			return nil
+		})
+	if err != nil {
+		t.Errorf("eine laufende Uebertragung wurde abgebrochen: %v", err)
+	}
+}
+
+// Was die Arbeit selbst meldet — Fehler oder Abbruch —, kommt unverändert an.
+// Kopieren liefert einen Abbruch deshalb weiter als genau ErrAbgebrochen.
+func TestStillstandWaechterReichtErgebnisDurch(t *testing.T) {
+	for _, erwartet := range []error{nil, ErrAbgebrochen, errors.New("Platte voll")} {
+		err := mitStillstandWaechter(context.Background(), time.Minute, time.Second,
+			func(context.Context, *atomic.Int64) error { return erwartet })
+		if err != erwartet {
+			t.Errorf("%v erwartet, bekommen: %v", erwartet, err)
+		}
 	}
 }
 

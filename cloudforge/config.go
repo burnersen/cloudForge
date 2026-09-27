@@ -1,13 +1,15 @@
 package main
 
 // Einstellungen aus der INI-Datei. Aufbau bewusst wie beim NVENCForge:
-// schluessel=wert, Zeilen mit # sind Kommentare. Fehlende Schlüssel werden
-// beim Start ergänzt, damit eine alte INI nach einem Update nicht von Hand
-// nachgepflegt werden muss.
+// schluessel=wert, Zeilen mit # sind Kommentare. Beim Start bringt das
+// Programm die Datei in Form (seit 0.14.0, wie NVENCForge 2.0): Reihenfolge
+// und Erklärungen wie ab Werk, die Werte des Nutzers bleiben. So muss eine
+// alte INI nach einem Update nie von Hand nachgepflegt werden.
 
 import (
-	"bufio"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -60,10 +62,6 @@ type Einstellungen struct {
 	MessfensterSek    float64
 	PlateauToleranz   float64 // wie viel VMAF eine Sprosse kosten darf
 	PlateauMindestSpa float64 // wie viel Prozent sie mindestens sparen muss
-
-	// Ton
-	TonSchwelleKbps int // darüber wird zu Opus gewandelt
-	TonZielKbps     int
 
 	// Kosten-Deckel (deckel.go): höchstens so viel Prozent der Quelle, 0 = aus
 	KostenDeckelProzent float64
@@ -126,9 +124,6 @@ func standardWerte() Einstellungen {
 		MessfensterSek:    8,
 		PlateauToleranz:   0.5, // wie in NVENCForge: Bild vor den letzten Prozent Platz
 		PlateauMindestSpa: 5,
-
-		TonSchwelleKbps: 1000,
-		TonZielKbps:     256,
 
 		// Den Deckel (bis 0.11.1: 50) hat der Nutzer am 27.09.2026
 		// abgeschaltet: gedeckelte Clips mit VMAF 93 sahen für ihn deutlich
@@ -203,10 +198,6 @@ func iniAufbau() []iniZeile {
 		{"plateauMindestSparen", func(e Einstellungen) string { return zahl(e.PlateauMindestSpa) },
 			"Der Aufstieg wird nur genommen, wenn er je CRF-Stufe im Mittel mindestens\n# so viel Prozent spart."},
 
-		{"tonSchwelleKbps", func(e Einstellungen) string { return strconv.Itoa(e.TonSchwelleKbps) },
-			"Tonspuren ueber dieser Bitrate werden zu Opus gewandelt, alle anderen\n# 1:1 kopiert. Hinweis: bei AAC-Stereo-Material loest das nie aus."},
-		{"tonZielKbps", func(e Einstellungen) string { return strconv.Itoa(e.TonZielKbps) }, ""},
-
 		{"mindestErsparnisProzent", func(e Einstellungen) string { return zahl(e.MindestErsparnisProzent) },
 			"Wird die Datei nicht um mindestens so viel Prozent kleiner, wird sie nicht\n# umgewandelt, sondern nur verlustfrei nach MKV umgepackt (Bild unveraendert,\n# wie NVENCForge) und als name.h264.mkv o. ae. in output gelegt; das Original\n# wandert wie sonst nach originals. Zweimal geprueft: gleich nach der\n# Qualitaetsmessung aus den Messproben hochgerechnet (spart die ganze\n# Rechenzeit) und nach dem Umwandeln an der echten Datei."},
 
@@ -227,68 +218,119 @@ func jaNein(b bool) string {
 	return "nein"
 }
 
-// EinstellungenLaden liest die INI. Fehlt sie, wird sie mit den Standardwerten
-// angelegt. Fehlen einzelne Schlüssel, werden sie ergänzt, ohne bestehende
-// Werte oder Kommentare des Nutzers anzutasten.
-func EinstellungenLaden(pfad string) (Einstellungen, error) {
-	e := standardWerte()
+// ausgemusterteSchluessel braucht das Programm nicht mehr. Beim Aufräumen
+// verschwinden sie still aus der INI. Jede andere unbekannte Zeile — etwa ein
+// vertippter Schlüssel — wird beim Start genannt: ihr Wert hat nie gewirkt.
+var ausgemusterteSchluessel = map[string]bool{
+	"autoCrop":         true, // seit 0.9.0: war nie eingebaut, täuschte eine Wirkung nur vor
+	"parallelerUpload": true, // seit 0.9.0: ebenso
+	"tonSchwelleKbps":  true, // seit 0.14.0: Ton wird immer 1:1 kopiert
+	"tonZielKbps":      true, // seit 0.14.0: ebenso
+}
 
-	datei, err := os.Open(pfad)
-	if os.IsNotExist(err) {
-		if schreibErr := iniSchreiben(pfad, e); schreibErr != nil {
-			return e, fmt.Errorf("INI konnte nicht angelegt werden: %w", schreibErr)
+// iniSicherungEndung: So heisst die bisherige Fassung, bevor das Aufräumen
+// die INI neu schreibt. Es gibt immer nur diese eine Sicherung.
+const iniSicherungEndung = ".bak"
+
+// utf8BOM ist die unsichtbare Markierung, die Windows-Editoren gern an den
+// Anfang einer Textdatei setzen.
+const utf8BOM = string(rune(0xFEFF))
+
+// EinstellungenLaden liest die INI. Fehlt sie, wird sie mit den Standardwerten
+// angelegt. Danach bringt iniAufraeumen sie in Form; was es dabei getan hat,
+// steht in hinweise (für den Start-Bildschirm).
+func EinstellungenLaden(pfad string) (e Einstellungen, hinweise []string, err error) {
+	e = standardWerte()
+
+	alt, err := os.ReadFile(pfad)
+	if errors.Is(err, fs.ErrNotExist) {
+		if schreibErr := iniAnlegen(pfad, e); schreibErr != nil {
+			return e, nil, fmt.Errorf("INI konnte nicht angelegt werden: %w", schreibErr)
 		}
-		return e, nil
+		return e, nil, nil
 	}
 	if err != nil {
-		return e, fmt.Errorf("INI nicht lesbar: %w", err)
+		return e, nil, fmt.Errorf("INI nicht lesbar: %w", err)
 	}
-	defer datei.Close()
 
-	gefunden := make(map[string]bool)
-	leser := bufio.NewScanner(datei)
-	zeilenNr := 0
-	for leser.Scan() {
-		zeilenNr++
-		zeile := strings.TrimSpace(leser.Text())
+	unbekannt, err := iniWerteLesen(string(alt), &e)
+	if err != nil {
+		return e, nil, err
+	}
+	// Aufgeräumt wird mit den Werten, wie der Nutzer sie eingetragen hat.
+	// pruefeGrenzen ändert danach nur, womit das Programm rechnet.
+	hinweise = iniAufraeumen(pfad, string(alt), e, unbekannt)
+	pruefeGrenzen(&e)
+	return e, hinweise, nil
+}
+
+// iniWerteLesen übernimmt jede Zeile schluessel=wert in e. Zurück kommen die
+// Zeilen, die das Programm nicht kennt — ausgemusterte Schlüssel ausgenommen.
+// Ein ungültiger Wert ist ein Fehler: dann wird auch nichts aufgeräumt.
+func iniWerteLesen(inhalt string, e *Einstellungen) (unbekannt []string, err error) {
+	// Windows-Editoren setzen gern eine unsichtbare Markierung (BOM) an den
+	// Anfang — sie gehört nicht zur ersten Zeile.
+	inhalt = strings.TrimPrefix(inhalt, utf8BOM)
+	bekannt := bekannteSchluessel()
+	for nummer, zeile := range strings.Split(inhalt, "\n") {
+		zeile = strings.TrimSpace(zeile)
 		if zeile == "" || strings.HasPrefix(zeile, "#") {
 			continue
 		}
 		schluessel, wert, ok := strings.Cut(zeile, "=")
 		if !ok {
-			continue // Zeile ohne = wird stillschweigend übergangen
+			unbekannt = append(unbekannt, zeile)
+			continue
 		}
-		schluessel = strings.TrimSpace(schluessel)
-		wert = strings.TrimSpace(wert)
-		gefunden[schluessel] = true
-
-		if err := wertUebernehmen(&e, schluessel, wert); err != nil {
-			return e, fmt.Errorf("INI Zeile %d (%s): %w", zeilenNr, schluessel, err)
+		schluessel, wert = strings.TrimSpace(schluessel), strings.TrimSpace(wert)
+		if !bekannt[schluessel] {
+			if !ausgemusterteSchluessel[schluessel] {
+				unbekannt = append(unbekannt, schluessel)
+			}
+			continue
 		}
-	}
-	if err := leser.Err(); err != nil {
-		return e, fmt.Errorf("INI nicht vollstaendig lesbar: %w", err)
-	}
-
-	pruefeGrenzen(&e)
-
-	// Fehlende Schlüssel anhängen, damit ein Update sichtbar wird.
-	if fehlende := fehlendeSchluessel(gefunden); len(fehlende) > 0 {
-		if err := iniErgaenzen(pfad, e, fehlende); err != nil {
-			return e, fmt.Errorf("INI konnte nicht ergaenzt werden: %w", err)
+		if err := wertUebernehmen(e, schluessel, wert); err != nil {
+			return nil, fmt.Errorf("INI Zeile %d (%s): %w", nummer+1, schluessel, err)
 		}
 	}
-	return e, nil
+	return unbekannt, nil
 }
 
-func fehlendeSchluessel(gefunden map[string]bool) []iniZeile {
-	var fehlende []iniZeile
+func bekannteSchluessel() map[string]bool {
+	bekannt := make(map[string]bool)
 	for _, z := range iniAufbau() {
-		if !gefunden[z.schluessel] {
-			fehlende = append(fehlende, z)
-		}
+		bekannt[z.schluessel] = true
 	}
-	return fehlende
+	return bekannt
+}
+
+// iniAufraeumen schreibt die INI neu, wenn sie von der Werksform abweicht:
+// Reihenfolge und Erklärungen aus iniAufbau, die Werte aus e. Vorher kommt
+// die bisherige Fassung in die Sicherung — mit allem, was danach nicht mehr
+// drinsteht (eigene Kommentare, unbekannte Zeilen).
+//
+// Scheitert etwas, bleibt die INI, wie sie ist. Die Werte gelten trotzdem,
+// nur die Form ist nicht aufgeräumt — deshalb ein Hinweis statt eines
+// Fehlers, der den Lauf verhindern würde.
+func iniAufraeumen(pfad, alt string, e Einstellungen, unbekannt []string) []string {
+	neu := iniText(e)
+	if neu == alt {
+		return nil
+	}
+	sicherung := pfad + iniSicherungEndung
+	if err := dateiErsetzen(sicherung, alt); err != nil {
+		return []string{fmt.Sprintf("INI nicht aufgeraeumt, Sicherung nicht schreibbar: %v", err)}
+	}
+	if err := dateiErsetzen(pfad, neu); err != nil {
+		return []string{fmt.Sprintf("INI nicht aufgeraeumt: %v", err)}
+	}
+	hinweise := []string{"INI aufgeraeumt (Reihenfolge und Erklaerungen wie ab Werk, deine Werte bleiben)," +
+		" vorherige Fassung: " + sicherung}
+	if len(unbekannt) > 0 {
+		hinweise = append(hinweise, "Unbekannt und deshalb entfernt (steht noch in der Sicherung): "+
+			strings.Join(unbekannt, ", "))
+	}
+	return hinweise
 }
 
 // wertUebernehmen setzt genau einen Schlüssel. Ein unbekannter Schlüssel ist
@@ -338,10 +380,6 @@ func wertUebernehmen(e *Einstellungen, schluessel, wert string) error {
 		return kommazahl(wert, 0, 20, &e.PlateauToleranz)
 	case "plateauMindestSparen":
 		return kommazahl(wert, 0, 100, &e.PlateauMindestSpa)
-	case "tonSchwelleKbps":
-		return ganzzahl(wert, 0, 100000, &e.TonSchwelleKbps)
-	case "tonZielKbps":
-		return ganzzahl(wert, 32, 2000, &e.TonZielKbps)
 	case "kostenDeckelProzent":
 		return kommazahl(wert, 0, 100, &e.KostenDeckelProzent)
 	case "mindestErsparnisProzent":
@@ -353,9 +391,9 @@ func wertUebernehmen(e *Einstellungen, schluessel, wert string) error {
 	case "maxStundenProDatei":
 		return ganzzahl(wert, 1, 240, &e.MaxStundenProDatei)
 	}
-	// Unbekannte Schlüssel werden übergangen. Das betrifft auch die seit 0.9.0
-	// entfernten autoCrop und parallelerUpload: sie waren nie eingebaut und
-	// täuschten eine Wirkung nur vor. Alte INIs laden damit weiter fehlerfrei.
+	// Unbekannte Schlüssel werden übergangen, alte INIs laden damit weiter
+	// fehlerfrei. Beim Aufräumen verschwinden sie aus der Datei (siehe
+	// ausgemusterteSchluessel).
 	return nil
 }
 
@@ -440,16 +478,14 @@ func pruefeGrenzen(e *Einstellungen) {
 	}
 }
 
-func iniSchreiben(pfad string, e Einstellungen) error {
-	if verzeichnis := filepath.Dir(pfad); verzeichnis != "" {
-		if err := os.MkdirAll(verzeichnis, 0o755); err != nil {
-			return err
-		}
-	}
+// iniText ist die INI in Werksform mit den Werten aus e.
+func iniText(e Einstellungen) string {
 	var inhalt strings.Builder
 	inhalt.WriteString("# CloudForge — Einstellungen\n")
-	inhalt.WriteString("# Zeilen mit # sind Kommentare. Fehlende Schluessel ergaenzt das\n")
-	inhalt.WriteString("# Programm beim naechsten Start von selbst.\n")
+	inhalt.WriteString("# Zeilen mit # sind Kommentare. Beim Start bringt CloudForge diese Datei in\n")
+	inhalt.WriteString("# Form: Reihenfolge und Erklaerungen wie ab Werk, deine Werte bleiben.\n")
+	inhalt.WriteString("# Eigene Kommentare und unbekannte Zeilen stehen danach nur noch in der\n")
+	inhalt.WriteString("# Sicherung daneben (gleicher Name mit " + iniSicherungEndung + ").\n")
 
 	for _, z := range iniAufbau() {
 		inhalt.WriteString("\n")
@@ -458,35 +494,33 @@ func iniSchreiben(pfad string, e Einstellungen) error {
 		}
 		inhalt.WriteString(z.schluessel + "=" + z.wert(e) + "\n")
 	}
-	return os.WriteFile(pfad, []byte(inhalt.String()), 0o644)
+	return inhalt.String()
 }
 
-func iniErgaenzen(pfad string, e Einstellungen, fehlende []iniZeile) error {
-	datei, err := os.OpenFile(pfad, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
+func iniAnlegen(pfad string, e Einstellungen) error {
+	if err := os.MkdirAll(filepath.Dir(pfad), 0o755); err != nil {
 		return err
 	}
-	defer datei.Close()
+	return dateiErsetzen(pfad, iniText(e))
+}
 
-	var inhalt strings.Builder
-	inhalt.WriteString("\n# --- von einer neueren Programmfassung ergaenzt ---\n")
-	for _, z := range fehlende {
-		inhalt.WriteString("\n")
-		if z.erklaerung != "" {
-			inhalt.WriteString("# " + z.erklaerung + "\n")
-		}
-		inhalt.WriteString(z.schluessel + "=" + z.wert(e) + "\n")
+// dateiErsetzen schreibt über eine Nebendatei und Umbenennen, damit ein
+// Absturz mitten im Schreiben nie eine halbe Datei hinterlässt.
+func dateiErsetzen(pfad, inhalt string) error {
+	tarnPfad := pfad + ".neu"
+	if err := os.WriteFile(tarnPfad, []byte(inhalt), 0o644); err != nil {
+		return err
 	}
-	_, err = datei.WriteString(inhalt.String())
-	return err
+	if err := os.Rename(tarnPfad, pfad); err != nil {
+		os.Remove(tarnPfad)
+		return err
+	}
+	return nil
 }
 
 // IniWertSetzen ändert einen einzelnen Schlüssel in der INI und lässt alles
 // andere — Kommentare, Reihenfolge, eigene Werte — unberührt. Fehlt der
 // Schlüssel, wird er angehängt.
-//
-// Geschrieben wird über eine Nebendatei und Umbenennen, damit ein Absturz
-// mitten im Schreiben nie eine halbe INI hinterlässt.
 func IniWertSetzen(pfad, schluessel, wert string) error {
 	inhalt, err := os.ReadFile(pfad)
 	if err != nil {
@@ -519,13 +553,8 @@ func IniWertSetzen(pfad, schluessel, wert string) error {
 		}
 	}
 
-	tarnPfad := pfad + ".neu"
-	if err := os.WriteFile(tarnPfad, []byte(strings.Join(zeilen, "\n")), 0o644); err != nil {
+	if err := dateiErsetzen(pfad, strings.Join(zeilen, "\n")); err != nil {
 		return fmt.Errorf("INI nicht schreibbar: %w", err)
-	}
-	if err := os.Rename(tarnPfad, pfad); err != nil {
-		os.Remove(tarnPfad)
-		return fmt.Errorf("INI nicht sicherbar: %w", err)
 	}
 	return nil
 }

@@ -127,7 +127,7 @@ func TestUmpackenKopiertDasBild(t *testing.T) {
 	e := standardWerte()
 	e.VarianceBoost, e.Tune0 = true, true // dürfen beim Umpacken keine Rolle spielen
 	auftrag := EncodeAuftrag{Quelle: "q.mp4", Ziel: "z.mkv", Umpacken: true,
-		Tonspuren: []Tonspur{{Codec: "aac", BitrateBps: 128000}}}
+		UntertitelCodecs: []string{"subrip"}}
 	args := EncodeArgumente(auftrag, e)
 
 	stelle := slices.Index(args, "-c:v")
@@ -139,7 +139,7 @@ func TestUmpackenKopiertDasBild(t *testing.T) {
 			t.Errorf("%s gehört nicht zum Umpacken: %v", darfNicht, args)
 		}
 	}
-	for _, muss := range []string{"0:a?", "0:s?", "-map_chapters", "-c:s"} {
+	for _, muss := range []string{"0:a?", "0:s?", "0:t?", "-map_chapters", "-c:s:0"} {
 		if !slices.Contains(args, muss) {
 			t.Errorf("%s fehlt — Ton, Untertitel und Kapitel müssen mit: %v", muss, args)
 		}

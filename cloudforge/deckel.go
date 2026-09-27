@@ -32,7 +32,7 @@ func QuelleFensterBytes(ctx context.Context, ffprobePfad, pfad string, fenster [
 
 	befehl := exec.CommandContext(ctx, ffprobePfad,
 		"-v", "error",
-		"-select_streams", "v:0",
+		"-select_streams", ersteFilmspurAuswahl,
 		"-read_intervals", leseBereiche(fenster, beginn),
 		"-show_entries", "format=start_time:packet=pts_time,dts_time,size",
 		"-of", "csv=p=1",

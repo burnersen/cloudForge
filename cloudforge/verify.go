@@ -133,12 +133,13 @@ func kettePruefen(ctx context.Context, quelle VideoInfo, ergebnisPfad string, e 
 	}
 	pruefe("Tonspuren vollstaendig", true, fmt.Sprintf("%d Spuren", len(neu.Tonspuren)))
 
-	if neu.UntertitelAnzahl != quelle.UntertitelAnzahl {
+	// Nur die Anzahl zählt: eine MP4-Textspur kommt absichtlich als SRT an.
+	if len(neu.UntertitelCodecs) != len(quelle.UntertitelCodecs) {
 		pruefe("Untertitel vollstaendig", false,
-			fmt.Sprintf("Quelle hat %d, Ergebnis %d", quelle.UntertitelAnzahl, neu.UntertitelAnzahl))
+			fmt.Sprintf("Quelle hat %d, Ergebnis %d", len(quelle.UntertitelCodecs), len(neu.UntertitelCodecs)))
 		return ergebnis
 	}
-	pruefe("Untertitel vollstaendig", true, fmt.Sprintf("%d Spuren", neu.UntertitelAnzahl))
+	pruefe("Untertitel vollstaendig", true, fmt.Sprintf("%d Spuren", len(neu.UntertitelCodecs)))
 
 	// 4. Die teuerste Prüfung: lässt sich die Datei von vorn bis hinten
 	// fehlerfrei dekodieren? Sie findet seltene Schäden mitten im Bild, die

@@ -31,7 +31,7 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.13.0                                   Datei 2 von 3
+       CloudForge 0.14.0                                   Datei 2 von 3
        -----------------------------------------------------------------
        OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 97,3  in 42 Min
 
@@ -396,6 +396,17 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         Der Ordner für die Automatik.
 
 Nach dem Ändern: speichern, fertig. Der nächste Lauf nimmt die neuen Werte.
+
+Beim Start bringt CloudForge die Datei in Form (seit 0.14.0): Reihenfolge
+und Erklärungen wie ab Werk, deine Werte bleiben. Weicht sie davon ab, liegt
+die vorherige Fassung danach als  cloudforge.ini.bak  daneben - dort stehen
+auch eigene Kommentare und unbekannte Zeilen, die in der aufgeräumten Datei
+fehlen. Eine vertippte Einstellung nennt CloudForge dabei beim Start.
+
+Ton, Untertitel, Kapitel und Anhänge (etwa Schriften) übernimmt CloudForge
+1:1. Nur Untertitel im MP4-Textformat kann MKV nicht aufnehmen - sie kommen
+als SRT an (gleicher Text, gleiche Zeiten). Ein eingebettetes Vorschaubild
+entfällt.
 
 
 ===============================================================================

@@ -11,11 +11,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -26,12 +28,74 @@ const (
 	kopierMeldeTakt = 500 * time.Millisecond // so oft wird der Stand gemeldet
 )
 
+// Hänger-Schutz (seit 0.14.0): Fliesst beim Kopieren so lange kein einziges
+// Byte, gibt CloudForge die Datei auf, statt ewig zu warten. Hängt der
+// pCloud-Ordner, kehrt ein Lesen oder Schreiben sonst womöglich nie zurück —
+// der Lauf stünde still, hielte die Sperre, und jeder Zeitplan-Lauf endete
+// unbemerkt, tagelang. Normal liefert pCloud 19 bis 24 MB/s (gemessen
+// 25./26.09.2026); zehn Minuten ohne ein Byte sind kein langsamer Tag mehr.
+const (
+	stillstandGrenze = 10 * time.Minute
+	stillstandTakt   = 15 * time.Second // so oft sieht der Wächter nach
+)
+
+// ErrStillstand heisst: beim Kopieren kam zu lange nichts mehr an. Die Datei
+// gilt als gescheitert, das Original bleibt unangetastet.
+var ErrStillstand = errors.New("beim Kopieren kommt nichts mehr an")
+
 // Kopieren überträgt eine Datei und prüft danach die Größe. Ein Abbruch
 // (Fenster zu) wird zwischen zwei Blöcken bemerkt und hinterlässt nichts.
+// Rührt sich die Übertragung stillstandGrenze lang nicht, kommt ErrStillstand.
 //
 // Bewusst kein os.Rename: zwischen dem Cloud-Ordner und der lokalen Platte
 // liegen verschiedene Dateisysteme, ein Umbenennen scheitert dort.
 func Kopieren(ctx context.Context, quellPfad, zielPfad string, melde Rueckmeldung) error {
+	return mitStillstandWaechter(ctx, stillstandGrenze, stillstandTakt,
+		func(arbeitsCtx context.Context, fortschritt *atomic.Int64) error {
+			return kopierenOhneWaechter(arbeitsCtx, quellPfad, zielPfad, melde, fortschritt)
+		})
+}
+
+// mitStillstandWaechter lässt arbeit in einer eigenen Goroutine laufen und
+// wartet auf ihr Ende. Bewegt sich fortschritt länger als grenze nicht, kommt
+// ErrStillstand zurück, OHNE auf arbeit zu warten: Ein hängendes Lesen auf
+// dem Cloud-Ordner lässt sich in Go nicht unterbrechen. arbeit bekommt dann
+// einen abgebrochenen ctx und räumt beim Aufwachen selbst auf.
+//
+// Ein Abbruch durch den Nutzer wartet dagegen auf arbeit — sie bemerkt ihn
+// nach spätestens einem Block und entfernt ihre halbe Datei, bevor Kopieren
+// zurückkehrt.
+func mitStillstandWaechter(ctx context.Context, grenze, takt time.Duration,
+	arbeit func(context.Context, *atomic.Int64) error) error {
+	arbeitsCtx, aufgeben := context.WithCancel(ctx)
+	defer aufgeben()
+
+	var fortschritt atomic.Int64
+	// Gepuffert, damit eine aufgegebene arbeit beim Aufwachen nicht hängt.
+	ende := make(chan error, 1)
+	go func() { ende <- arbeit(arbeitsCtx, &fortschritt) }()
+
+	wecker := time.NewTicker(takt)
+	defer wecker.Stop()
+	zuletzt, bewegtAm := fortschritt.Load(), time.Now()
+	for {
+		select {
+		case err := <-ende:
+			return err
+		case jetzt := <-wecker.C:
+			if stand := fortschritt.Load(); stand != zuletzt {
+				zuletzt, bewegtAm = stand, jetzt
+			} else if jetzt.Sub(bewegtAm) >= grenze {
+				return fmt.Errorf("%w: seit %s kein Byte (haengt die Cloud?) - aufgegeben",
+					ErrStillstand, uhrText(grenze))
+			}
+		}
+	}
+}
+
+// kopierenOhneWaechter ist das eigentliche Kopieren; fortschritt zählt die
+// geschriebenen Bytes für den Wächter.
+func kopierenOhneWaechter(ctx context.Context, quellPfad, zielPfad string, melde Rueckmeldung, fortschritt *atomic.Int64) error {
 	quelle, err := os.Open(quellPfad)
 	if err != nil {
 		return fmt.Errorf("Quelle nicht lesbar: %w", err)
@@ -54,7 +118,7 @@ func Kopieren(ctx context.Context, quellPfad, zielPfad string, melde Rueckmeldun
 		return fmt.Errorf("Ziel nicht schreibbar: %w", err)
 	}
 
-	kopierFehler := kopierenMitMeldung(ctx, ziel, quelle, quellZustand.Size(), melde)
+	kopierFehler := kopierenMitMeldung(ctx, ziel, quelle, quellZustand.Size(), melde, fortschritt)
 	schliessFehler := ziel.Close()
 
 	if kopierFehler != nil {
@@ -84,8 +148,10 @@ func Kopieren(ctx context.Context, quellPfad, zielPfad string, melde Rueckmeldun
 }
 
 // kopierenMitMeldung kopiert blockweise, meldet den Stand und schaut vor
-// jedem Block nach, ob abgebrochen wurde.
-func kopierenMitMeldung(ctx context.Context, ziel io.Writer, quelle io.Reader, gesamt int64, melde Rueckmeldung) error {
+// jedem Block nach, ob abgebrochen wurde. fortschritt zählt mit, was schon
+// geschrieben ist.
+func kopierenMitMeldung(ctx context.Context, ziel io.Writer, quelle io.Reader, gesamt int64,
+	melde Rueckmeldung, fortschritt *atomic.Int64) error {
 	puffer := make([]byte, kopierPuffer)
 	beginn := time.Now()
 	var kopiert int64
@@ -97,11 +163,17 @@ func kopierenMitMeldung(ctx context.Context, ziel io.Writer, quelle io.Reader, g
 		}
 
 		gelesen, leseFehler := quelle.Read(puffer)
+		// Hat der Wächter während eines hängenden Lesens aufgegeben, wird
+		// nichts mehr geschrieben und nichts mehr gemeldet.
+		if ctx.Err() != nil {
+			return ErrAbgebrochen
+		}
 		if gelesen > 0 {
 			if _, err := ziel.Write(puffer[:gelesen]); err != nil {
 				return err
 			}
 			kopiert += int64(gelesen)
+			fortschritt.Store(kopiert)
 
 			if melde != nil && gesamt > 0 && time.Since(zuletztGemeldet) >= kopierMeldeTakt {
 				zuletztGemeldet = time.Now()

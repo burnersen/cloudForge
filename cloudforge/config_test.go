@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -40,28 +41,144 @@ func TestWerkswerteSindDieDesNutzers(t *testing.T) {
 	}
 }
 
-// Seit 0.9.0 gibt es autoCrop und parallelerUpload nicht mehr (nie gebaut).
-// Eine INI, die sie noch enthält, muss trotzdem laden — und sie dürfen beim
-// Ergänzen nicht wieder auftauchen.
-func TestINIMitEntferntenSchluesselnLaedt(t *testing.T) {
+// Seit 0.14.0 bringt der Start die INI in Werksform (wie NVENCForge 2.0):
+// Werte des Nutzers bleiben, ausgemusterte Schlüssel und eigene Kommentare
+// verschwinden, die alte Fassung liegt vollständig in der Sicherung. Ein
+// vertippter Schlüssel wird genannt, ein ausgemusterter nicht.
+func TestINIAufraeumenBehaeltWerteUndSichertDieAlteFassung(t *testing.T) {
 	pfad := filepath.Join(t.TempDir(), "cloudforge.ini")
-	if err := os.WriteFile(pfad, []byte("preset=9\nautoCrop=ja\nparallelerUpload=ja\n"), 0o644); err != nil {
+	alt := "# meine Notiz\npreset=8\nzielVMAF=97,5\nvarianceBoost=Ja\n" +
+		"autoCrop=ja\ntonSchwelleKbps=800\ntonZielKbps=256\nzielVmaf=90\n"
+	if err := os.WriteFile(pfad, []byte(alt), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	e, err := EinstellungenLaden(pfad)
+
+	e, hinweise, err := EinstellungenLaden(pfad)
 	if err != nil {
-		t.Fatalf("INI mit alten Schluesseln nicht ladbar: %v", err)
+		t.Fatalf("INI nicht ladbar: %v", err)
 	}
-	if e.Preset != 9 {
-		t.Errorf("Wert des Nutzers verloren: preset %d", e.Preset)
+	if e.Preset != 8 || e.ZielVMAF != 97.5 || !e.VarianceBoost {
+		t.Errorf("Werte des Nutzers verloren: preset %d, zielVMAF %v, varianceBoost %v",
+			e.Preset, e.ZielVMAF, e.VarianceBoost)
 	}
-	inhalt, err := os.ReadFile(pfad)
+
+	neu, err := os.ReadFile(pfad)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, alt := range []string{"autoCrop", "parallelerUpload"} {
-		if n := strings.Count(string(inhalt), alt+"="); n != 1 {
-			t.Errorf("%s steht %d-mal in der INI, erwartet einmal (die alte Zeile, nichts ergaenzt)", alt, n)
+	if string(neu) != iniText(e) {
+		t.Errorf("INI ist nicht in Werksform:\n%s", neu)
+	}
+	for _, weg := range []string{"meine Notiz", "autoCrop", "tonSchwelleKbps", "tonZielKbps", "zielVmaf"} {
+		if strings.Contains(string(neu), weg) {
+			t.Errorf("%q steht noch in der aufgeraeumten INI", weg)
+		}
+	}
+	sicherung, err := os.ReadFile(pfad + iniSicherungEndung)
+	if err != nil {
+		t.Fatalf("keine Sicherung: %v", err)
+	}
+	if string(sicherung) != alt {
+		t.Errorf("Sicherung weicht von der alten INI ab:\n%s", sicherung)
+	}
+
+	alleHinweise := strings.Join(hinweise, "\n")
+	if !strings.Contains(alleHinweise, "zielVmaf") {
+		t.Errorf("der vertippte Schluessel wird nicht genannt: %v", hinweise)
+	}
+	for _, still := range []string{"autoCrop", "tonSchwelleKbps", "tonZielKbps"} {
+		if strings.Contains(alleHinweise, still) {
+			t.Errorf("ausgemusterter Schluessel %s wird als unbekannt gemeldet: %v", still, hinweise)
+		}
+	}
+}
+
+// Eine INI, die schon in Werksform ist, bleibt Byte für Byte, wie sie ist —
+// ohne Sicherung und ohne Hinweis. Sonst schriebe jeder Start die Datei neu.
+func TestINIInWerksformBleibtUnberuehrt(t *testing.T) {
+	pfad := filepath.Join(t.TempDir(), "cloudforge.ini")
+	e := standardWerte()
+	e.ZielVMAF, e.QuellOrdner = 95.5, []string{"/home/b/Daten"}
+	if err := os.WriteFile(pfad, []byte(iniText(e)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, hinweise, err := EinstellungenLaden(pfad)
+	if err != nil {
+		t.Fatalf("INI nicht ladbar: %v", err)
+	}
+	if len(hinweise) != 0 {
+		t.Errorf("keine Hinweise erwartet: %v", hinweise)
+	}
+	if _, err := os.Stat(pfad + iniSicherungEndung); err == nil {
+		t.Error("ohne Aenderung darf keine Sicherung entstehen")
+	}
+	if nachher, _ := os.ReadFile(pfad); string(nachher) != iniText(e) {
+		t.Errorf("die INI wurde veraendert:\n%s", nachher)
+	}
+}
+
+// Unter Windows gespeichert: unsichtbare BOM am Anfang, Zeilenenden CRLF. Der
+// erste Schlüssel muss trotzdem gelten und darf nicht als unbekannt gelten.
+func TestINIVonWindowsEditor(t *testing.T) {
+	e := standardWerte()
+	unbekannt, err := iniWerteLesen(utf8BOM+"preset=7\r\nzielVMAF=95\r\n", &e)
+	if err != nil {
+		t.Fatalf("nicht lesbar: %v", err)
+	}
+	if e.Preset != 7 || e.ZielVMAF != 95 || len(unbekannt) != 0 {
+		t.Errorf("preset %d, zielVMAF %v, unbekannt %v", e.Preset, e.ZielVMAF, unbekannt)
+	}
+}
+
+// Ein ungültiger Wert hält den Start an (wie bisher) — und dann wird auch
+// nichts aufgeräumt, damit der Nutzer seine Zeile so wiederfindet.
+func TestINIMitUngueltigemWertWirdNichtAngefasst(t *testing.T) {
+	pfad := filepath.Join(t.TempDir(), "cloudforge.ini")
+	alt := "# Notiz\npreset=99\n"
+	if err := os.WriteFile(pfad, []byte(alt), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := EinstellungenLaden(pfad); err == nil {
+		t.Fatal("preset=99 muss ein Fehler sein")
+	}
+	if nachher, _ := os.ReadFile(pfad); string(nachher) != alt {
+		t.Errorf("die INI wurde trotz Fehler veraendert:\n%s", nachher)
+	}
+	if _, err := os.Stat(pfad + iniSicherungEndung); err == nil {
+		t.Error("trotz Fehler wurde eine Sicherung angelegt")
+	}
+}
+
+// Jeder Schlüssel, den die Werksform schreibt, muss sich zurücklesen lassen —
+// sonst ginge sein Wert beim Aufräumen still verloren. Alle Werte weichen
+// dafür vom Werk ab.
+func TestINIHinUndZurueck(t *testing.T) {
+	vorher := Einstellungen{
+		FFmpegPfad: "/x/ffmpeg", FFprobePfad: "/x/ffprobe",
+		QuellOrdner: []string{"/a", "/b c"}, ArbeitsOrdner: "/arbeit",
+		AusgabeOrdnerName: "aus", OriginalOrdnerName: "orig",
+		OriginalBehandlung: OriginalLoeschen,
+		Preset:             7, Kerne: 3, Bittiefe: 8, VarianceBoost: true, Tune0: true,
+		ZielVMAF: 95.5, AnkerNiedrig: 18, AnkerHoch: 30, CRFMin: 12, CRFMax: 50,
+		MessfensterAnzahl: 7, MessfensterSek: 9.5, PlateauToleranz: 0.3, PlateauMindestSpa: 4,
+		KostenDeckelProzent: 40, MindestErsparnisProzent: 22,
+		PlatzReserveGB: 33, Vollpruefung: true, MaxStundenProDatei: 5,
+	}
+	nachher := standardWerte()
+	unbekannt, err := iniWerteLesen(iniText(vorher), &nachher)
+	if err != nil {
+		t.Fatalf("Werksform nicht lesbar: %v", err)
+	}
+	if len(unbekannt) != 0 {
+		t.Errorf("die Werksform enthaelt unbekannte Zeilen: %v", unbekannt)
+	}
+	if !reflect.DeepEqual(vorher, nachher) {
+		t.Errorf("Werte gingen verloren:\nvorher  %+v\nnachher %+v", vorher, nachher)
+	}
+	for schluessel := range ausgemusterteSchluessel {
+		if bekannteSchluessel()[schluessel] {
+			t.Errorf("%s ist ausgemustert, steht aber noch in iniAufbau", schluessel)
 		}
 	}
 }
@@ -138,7 +255,7 @@ func TestAlteINIBekommtNeueSchluesselErgaenzt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e, err := EinstellungenLaden(pfad)
+	e, _, err := EinstellungenLaden(pfad)
 	if err != nil {
 		t.Fatalf("alte INI nicht ladbar: %v", err)
 	}
@@ -162,7 +279,7 @@ func TestAlteINIBekommtNeueSchluesselErgaenzt(t *testing.T) {
 		}
 	}
 
-	if _, err := EinstellungenLaden(pfad); err != nil {
+	if _, _, err := EinstellungenLaden(pfad); err != nil {
 		t.Fatalf("zweiter Start scheitert: %v", err)
 	}
 	nachZweitemStart, err := os.ReadFile(pfad)
@@ -261,7 +378,7 @@ func TestINIMitBittiefe10(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e, err := EinstellungenLaden(pfad)
+	e, _, err := EinstellungenLaden(pfad)
 	if err != nil {
 		t.Fatalf("INI nicht ladbar: %v", err)
 	}

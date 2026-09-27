@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -143,7 +146,7 @@ func TestUmpackenMitEchtemFFmpeg(t *testing.T) {
 	e := standardWerte()
 	e.FFmpegPfad, e.FFprobePfad = ffmpeg, ffprobe
 	ergebnis := filepath.Join(ordner, "film.h264.mkv")
-	auftrag := EncodeAuftrag{Quelle: quelle, Ziel: ergebnis, Tonspuren: info.Tonspuren, Umpacken: true}
+	auftrag := EncodeAuftrag{Quelle: quelle, Ziel: ergebnis, UntertitelCodecs: info.UntertitelCodecs, Umpacken: true}
 	if err := Kodieren(ctx, auftrag, e, info.DauerSek, nil); err != nil {
 		t.Fatalf("Umpacken: %v", err)
 	}
@@ -238,5 +241,103 @@ func TestVorlaufVerstecktMitEchtemFFmpeg(t *testing.T) {
 	}
 	if v, err := VorlaufVersteckt(ffprobe, geschnitten); err != nil || !v {
 		t.Errorf("ohne Neukodieren geschnitten: Vorlauf erwartet, bekommen %v (%v)", v, err)
+	}
+}
+
+// Seit 0.14.0 mit echtem ffmpeg: Eine MP4 mit Textuntertiteln (mov_text) und
+// eingebettetem Titelbild liess sich bis 0.13.0 weder umwandeln noch umpacken
+// (27.09.2026 nachgestellt). Jetzt kommen die Untertitel als SRT an, das
+// Titelbild entfällt, der Ton bleibt — und eine Schrift in einer MKV kommt mit.
+func TestUntertitelTitelbildUndSchriftMitEchtemFFmpeg(t *testing.T) {
+	ffmpeg := os.Getenv("CLOUDFORGE_TEST_FFMPEG")
+	ffprobe := os.Getenv("CLOUDFORGE_TEST_FFPROBE")
+	if ffmpeg == "" || ffprobe == "" {
+		t.Skip("CLOUDFORGE_TEST_FFMPEG und CLOUDFORGE_TEST_FFPROBE nicht gesetzt")
+	}
+	ctx := context.Background()
+	ordner := t.TempDir()
+	e := standardWerte()
+	e.FFmpegPfad, e.FFprobePfad = ffmpeg, ffprobe
+
+	ffmpegLassen := func(was string, args ...string) {
+		befehl := exec.Command(ffmpeg, append([]string{"-nostdin", "-loglevel", "error", "-y"}, args...)...)
+		if ausgabe, err := befehl.CombinedOutput(); err != nil {
+			t.Fatalf("%s nicht erzeugbar: %v (%s)", was, err, ausgabe)
+		}
+	}
+	spurenZaehlen := func(pfad, art string) int {
+		aus, err := exec.Command(ffprobe, "-v", "error", "-select_streams", art,
+			"-show_entries", "stream=index", "-of", "csv=p=0", pfad).Output()
+		if err != nil {
+			t.Fatalf("Spuren von %s: %v", pfad, err)
+		}
+		return len(strings.Fields(string(aus)))
+	}
+	hilfsdatei := func(name, inhalt string) string {
+		pfad := filepath.Join(ordner, name)
+		if err := os.WriteFile(pfad, []byte(inhalt), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return pfad
+	}
+
+	film := filepath.Join(ordner, "film.mp4")
+	ffmpegLassen("Film", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=5",
+		"-f", "lavfi", "-i", "sine=duration=5",
+		"-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-shortest", film)
+	titelbild := filepath.Join(ordner, "titelbild.jpg")
+	ffmpegLassen("Titelbild", "-f", "lavfi", "-i", "color=c=red:size=200x200", "-frames:v", "1", titelbild)
+	untertitel := hilfsdatei("text.srt", "1\n00:00:01,000 --> 00:00:03,000\nHallo\n")
+
+	quelle := filepath.Join(ordner, "mit-allem.mp4")
+	ffmpegLassen("MP4 mit Untertitel und Titelbild", "-i", film, "-i", untertitel, "-i", titelbild,
+		"-map", "0", "-map", "1", "-map", "2", "-c", "copy", "-c:s", "mov_text",
+		"-disposition:v:1", "attached_pic", quelle)
+	info, err := KopfdatenLesen(ffprobe, quelle)
+	if err != nil {
+		t.Fatalf("Kopfdaten: %v", err)
+	}
+	if !slices.Equal(info.UntertitelCodecs, []string{untertitelMP4Text}) || spurenZaehlen(quelle, "v") != 2 {
+		t.Fatalf("Testquelle falsch aufgebaut: Untertitel %v, %d Videospuren",
+			info.UntertitelCodecs, spurenZaehlen(quelle, "v"))
+	}
+
+	for _, umpacken := range []bool{true, false} {
+		ergebnis := filepath.Join(ordner, fmt.Sprintf("ergebnis-umpacken-%v.mkv", umpacken))
+		auftrag := EncodeAuftrag{Quelle: quelle, Ziel: ergebnis, CRF: 50, Umpacken: umpacken,
+			UntertitelCodecs: info.UntertitelCodecs}
+		if err := Kodieren(ctx, auftrag, e, info.DauerSek, nil); err != nil {
+			t.Errorf("umpacken=%v: %v", umpacken, err)
+			continue
+		}
+		neu, err := KopfdatenLesen(ffprobe, ergebnis)
+		if err != nil {
+			t.Fatalf("umpacken=%v, Kopfdaten des Ergebnisses: %v", umpacken, err)
+		}
+		if !slices.Equal(neu.UntertitelCodecs, []string{"subrip"}) {
+			t.Errorf("umpacken=%v: Untertitel %v, erwartet SRT (subrip)", umpacken, neu.UntertitelCodecs)
+		}
+		if n := spurenZaehlen(ergebnis, "v"); n != 1 {
+			t.Errorf("umpacken=%v: %d Videospuren, erwartet nur den Film (Titelbild entfaellt)", umpacken, n)
+		}
+		if len(neu.Tonspuren) != 1 || neu.Tonspuren[0].Codec != "aac" {
+			t.Errorf("umpacken=%v: Ton nicht 1:1: %+v", umpacken, neu.Tonspuren)
+		}
+		if p := UmpackErgebnisPruefen(ctx, info, ergebnis, e, nil); !p.Bestanden {
+			t.Errorf("umpacken=%v: Pruefkette: %s", umpacken, p.ErsterFehler())
+		}
+	}
+
+	schrift := hilfsdatei("schrift.ttf", "keine echte Schrift, nur ein Anhang")
+	mkv := filepath.Join(ordner, "mit-schrift.mkv")
+	ffmpegLassen("MKV mit Schrift", "-i", film, "-attach", schrift,
+		"-metadata:s:t", "mimetype=application/x-truetype-font", "-map", "0", "-c", "copy", mkv)
+	mkvErgebnis := filepath.Join(ordner, "schrift-ergebnis.mkv")
+	auftrag := EncodeAuftrag{Quelle: mkv, Ziel: mkvErgebnis, Umpacken: true}
+	if err := Kodieren(ctx, auftrag, e, info.DauerSek, nil); err != nil {
+		t.Fatalf("MKV mit Schrift umpacken: %v", err)
+	}
+	if n := spurenZaehlen(mkvErgebnis, "t"); n != 1 {
+		t.Errorf("die Schrift ging verloren: %d Anhaenge im Ergebnis", n)
 	}
 }
