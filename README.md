@@ -63,7 +63,7 @@ Jede Datei durchläuft fünf Schritte:
 | Schritt | Was passiert |
 |---|---|
 | **1. Datei holen** | Kopie aus dem Cloud-Ordner auf die lokale Platte. Auf dem Cloud-Ordner selbst wird nie gerechnet. |
-| **2. Qualität messen** | Kurze Stücke an 5 Stellen des Films werden probeweise umgewandelt und per **VMAF** (ein Maß für die Bildqualität, 100 = wie das Original) verglichen. Gewählt wird der höchste **CRF** (Kompressionsstufe), der das Ziel mindestens hält – ab Werk VMAF 96. Danach steht auch fest, wie groß das Ergebnis etwa wird; spart es zu wenig, wird die Datei nur umgepackt. |
+| **2. Qualität messen** | Kurze Stücke an 5 Stellen des Films werden probeweise umgewandelt und per **VMAF** (ein Maß für die Bildqualität, 100 = wie das Original) verglichen. Gewählt wird der höchste **CRF** (Kompressionsstufe), der das Ziel mindestens hält – ab Werk VMAF 96. Danach steht auch fest, wie groß das Ergebnis etwa wird; spart es zu wenig, wird die Datei nur umgepackt. Liegt die Vorhersage knapp an der Schwelle, prüft eine Größenprobe an 10 Stellen über den ganzen Film nach, bevor umgewandelt wird. |
 | **3. Umwandeln** | SVT-AV1, ab Werk preset 9 und 10 Bit (gegen Streifen in Farbverläufen). Tonspuren bleiben unverändert, nur sehr große (über 1 Mbit/s) werden nach Opus mit 256 kbit/s gewandelt. Untertitel werden übernommen. |
 | **4. Prüfen** | Das Ergebnis wird gegen das Original geprüft: Größe, Spieldauer, alle Spuren. |
 | **5. Ergebnis ablegen** | Hochladen unter einem Zwischennamen – unter seinem richtigen Namen erscheint das Ergebnis erst, wenn es vollständig da ist. Erst dann wandert das Original nach `originals/`. |

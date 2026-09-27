@@ -171,29 +171,10 @@ func ProbeSchneiden(ctx context.Context, quelle, ziel string, fenster []Fenster,
 		return fmt.Errorf("keine Messfenster angegeben")
 	}
 
-	args := []string{"-nostdin", "-y"}
-	for _, f := range fenster {
-		args = append(args,
-			"-ss", zahlText(f.StartSek),
-			"-t", zahlText(f.LaengeSek),
-			"-i", quelle)
-	}
-
-	// Die Ausschnitte hintereinanderhängen und die Bildzeiten neu setzen,
-	// damit die Datei bei null beginnt und lückenlos läuft.
-	var kette strings.Builder
-	for i := range fenster {
-		fmt.Fprintf(&kette, "[%d:v:0]", i)
-	}
-	fmt.Fprintf(&kette, "concat=n=%d:v=1:a=0[zusammen];[zusammen]setpts=PTS-STARTPTS[fertig]", len(fenster))
-
 	// Die Vergleichsdatei hat dieselbe Bittiefe wie das Ergebnis. So misst
 	// VMAF genau das, was der Encoder verliert. Eine 10-Bit-Quelle wird bei
 	// bittiefe=8 also schon hier gerundet — diese Rundung sieht die Messung nicht.
-	args = append(args,
-		"-filter_complex", kette.String(),
-		"-map", "[fertig]",
-		"-an", "-sn",
+	args := append(fensterArgumente(quelle, fenster),
 		"-c:v", "ffvhuff",
 		"-pix_fmt", zielPixelFormat(e),
 		ziel)
@@ -202,6 +183,32 @@ func ProbeSchneiden(ctx context.Context, quelle, ziel string, fenster []Fenster,
 		return fmt.Errorf("Messausschnitte konnten nicht erzeugt werden: %w", err)
 	}
 	return nil
+}
+
+// fensterArgumente liest die Ausschnitte einer Quelle ein, hängt sie
+// hintereinander und setzt die Bildzeiten neu, damit das Ergebnis bei null
+// beginnt und lückenlos läuft — nur das Bild, ohne Ton und Untertitel. Es
+// fehlen noch Encoder und Zieldatei; so dient es den Messausschnitten und der
+// Grössenprobe gleichermassen.
+func fensterArgumente(quelle string, fenster []Fenster) []string {
+	args := []string{"-nostdin", "-y"}
+	for _, f := range fenster {
+		args = append(args,
+			"-ss", zahlText(f.StartSek),
+			"-t", zahlText(f.LaengeSek),
+			"-i", quelle)
+	}
+
+	var kette strings.Builder
+	for i := range fenster {
+		fmt.Fprintf(&kette, "[%d:v:0]", i)
+	}
+	fmt.Fprintf(&kette, "concat=n=%d:v=1:a=0[zusammen];[zusammen]setpts=PTS-STARTPTS[fertig]", len(fenster))
+
+	return append(args,
+		"-filter_complex", kette.String(),
+		"-map", "[fertig]",
+		"-an", "-sn")
 }
 
 // VMAFMessen vergleicht eine kodierte Datei mit ihrer Referenz.

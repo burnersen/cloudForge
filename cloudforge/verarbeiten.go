@@ -199,8 +199,14 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 
 	// Lohnt es sich? Aus den Messproben hochgerechnet — BEVOR eine halbe
 	// Stunde gerechnet wird. Am 25.09.2026 lief eine dünne Quelle 20 Minuten,
-	// bis die Anzeige zeigte, dass sie grösser wird. Dann nur umpacken.
-	if erwartet, ok := erwarteteErsparnisProzent(info, autoCQ.AnteilQuelle); ok && erwartet < e.MindestErsparnisProzent {
+	// bis die Anzeige zeigte, dass sie grösser wird. Dann nur umpacken. Knapp
+	// an der Schwelle entscheidet seit 0.13.0 die genauere Grössenprobe.
+	erwartet, ok, err := ersparnisVorhersagen(ctx, anz, schrittMessen, schritteGesamt,
+		lokaleQuelle, info, autoCQ, arbeitsplatz, e)
+	if err != nil {
+		return fehler("Groessenprobe", err)
+	}
+	if ok && erwartet < e.MindestErsparnisProzent {
 		umpacken.grund = lohntNichtText(erwartet, e.MindestErsparnisProzent)
 		return a.umpackenUndAblegen(ctx, umpacken)
 	}

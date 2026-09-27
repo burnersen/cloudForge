@@ -31,7 +31,7 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.12.0                                   Datei 2 von 3
+       CloudForge 0.13.0                                   Datei 2 von 3
        -----------------------------------------------------------------
        OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 97,3  in 42 Min
 
@@ -346,6 +346,9 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         gleich) und in "output" gelegt - wie bei NVENCForge. CloudForge rechnet
         das gleich nach der Qualitätsmessung aus (nach 2-4 Minuten) - so wird
         keine Zeit an Dateien verschwendet, die sich nicht lohnen.
+        Liegt die Vorhersage knapp an dieser Schwelle, wandelt CloudForge
+        zur Sicherheit noch 10 kurze Stücke über den ganzen Film verteilt
+        probehalber um (1-2 Minuten, seit 0.13.0) und entscheidet erst dann.
         Ab Werk 15 (vorher 30): Auch Grenzfälle werden noch kleiner gemacht,
         darunter lohnt die Rechenzeit kaum.
 

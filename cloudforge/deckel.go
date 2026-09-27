@@ -131,8 +131,17 @@ func fensterBytesAusPaketen(ausgabe string, fenster []Fenster) int64 {
 		}
 	}
 
+	// Liegen Stellen dicht beieinander, springt ffprobe für jede an das
+	// Schlüsselbild davor, und dieselben Pakete kommen mehrfach — gefunden am
+	// 27.09.2026 mit 10 Stellen in einem 100-s-Film: doppelt so viel Quelle
+	// gezählt, die Vorhersage viel zu günstig. Jedes Paket zählt nur einmal.
+	gezaehlt := make(map[paket]bool, len(pakete))
 	var summe int64
 	for _, p := range pakete {
+		if gezaehlt[p] {
+			continue
+		}
+		gezaehlt[p] = true
 		for _, f := range fenster {
 			von := beginn + f.StartSek
 			if p.zeit >= von && p.zeit < von+f.LaengeSek {

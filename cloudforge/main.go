@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.12.0"
+const appVersion = "0.13.0"
 
 func main() {
 	err := starten()
@@ -494,8 +494,13 @@ func eineDateiAnalysieren(ctx context.Context, anz *Anzeige, nummer, gesamt int,
 	if ergebnis.Hinweis != "" && (ergebnis.Gedeckelt || !ergebnis.ZielErreichbar || ergebnis.DeckelNichtEinhaltbar || ergebnis.AnteilQuelle <= 0) {
 		anz.Zeile("  Hinweis: %s", ergebnis.Hinweis)
 	}
-	// Dieselbe Entscheidung, die ein echter Lauf vor dem Umwandeln trifft.
-	if erwartet, ok := erwarteteErsparnisProzent(info, ergebnis.AnteilQuelle); ok {
+	// Dieselbe Entscheidung, die ein echter Lauf vor dem Umwandeln trifft —
+	// knapp an der Schwelle also mit Grössenprobe.
+	erwartet, ok, err := ersparnisVorhersagen(ctx, anz, 1, 1, pfad, info, ergebnis, arbeitsplatz, e)
+	if err != nil {
+		return err
+	}
+	if ok {
 		if erwartet < e.MindestErsparnisProzent {
 			anz.Zeile("  Wuerde nur verlustfrei UMGEPACKT: %s", lohntNichtText(erwartet, e.MindestErsparnisProzent))
 		} else {

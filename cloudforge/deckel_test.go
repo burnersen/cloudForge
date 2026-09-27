@@ -252,6 +252,28 @@ func TestFensterBytesAusPaketen(t *testing.T) {
 	}
 }
 
+// Dicht beieinanderliegende Stellen: ffprobe springt für jede an das
+// Schlüsselbild davor und liefert dieselben Pakete zweimal. Sie dürfen nur
+// einmal zählen (Fund vom 27.09.2026: doppelt so viel Quelle gezählt).
+func TestFensterBytesAusPaketenZaehltDoppelteNurEinmal(t *testing.T) {
+	ersterBereich := []string{
+		"packet,10.000000,9.960000,1000",
+		"packet,12.000000,11.960000,2000",
+		"packet,21.000000,20.960000,3000",
+	}
+	zweiterBereich := []string{ // ab dem Schlüsselbild bei 10 s nochmal gelesen
+		"packet,10.000000,9.960000,1000",
+		"packet,12.000000,11.960000,2000",
+		"packet,21.000000,20.960000,3000",
+		"packet,22.000000,21.960000,4000",
+	}
+	ausgabe := strings.Join(append(append(ersterBereich, zweiterBereich...), "format,0.000000"), "\n")
+	fenster := []Fenster{{StartSek: 11, LaengeSek: 8}, {StartSek: 21, LaengeSek: 8}}
+	if b := fensterBytesAusPaketen(ausgabe, fenster); b != 2000+3000+4000 {
+		t.Errorf("9000 Bytes erwartet (jedes Paket einmal), bekommen %d", b)
+	}
+}
+
 // Das Leseende muss ABSOLUT dastehen: "START%+DAUER" zählt ffprobe ab dem
 // Schlüsselbild vor START und hörte bis 0.11.1 mitten im Fenster auf.
 func TestLeseBereicheMitAbsolutemEnde(t *testing.T) {
