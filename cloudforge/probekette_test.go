@@ -41,7 +41,9 @@ func TestProbeKetteMitEchtemFFmpeg(t *testing.T) {
 
 	// Gegen sich selbst gemessen muss fast 100 herauskommen — sonst paart die
 	// Messung falsche Bilder oder liest den falschen Wert (NVENCForge-Lektion).
-	selbst, err := VMAFMessen(ctx, referenz, referenz, e)
+	// 320x240 wird dafür seit 0.12.0 auf 1440x1080 vergrössert.
+	const breite, hoehe = 320, 240
+	selbst, err := VMAFMessen(ctx, referenz, referenz, breite, hoehe, e)
 	if err != nil {
 		t.Fatalf("VMAF gegen sich selbst: %v", err)
 	}
@@ -54,12 +56,24 @@ func TestProbeKetteMitEchtemFFmpeg(t *testing.T) {
 	if err := Kodieren(ctx, auftrag, e, 0, nil); err != nil {
 		t.Fatalf("Kodieren mit Variance Boost und tune 0: %v", err)
 	}
-	wert, err := VMAFMessen(ctx, probe, referenz, e)
+	wert, err := VMAFMessen(ctx, probe, referenz, breite, hoehe, e)
 	if err != nil {
 		t.Fatalf("VMAF der Probe: %v", err)
 	}
 	if wert <= 20 || wert >= selbst {
 		t.Errorf("VMAF der Probe %.2f ist unplausibel (gegen sich selbst %.2f)", wert, selbst)
+	}
+
+	// Vergrössert fallen die Kodierfehler stärker auf. In eigener Grösse
+	// gemessen (Masse unbekannt = nicht vergrössern) muss der Wert also höher
+	// liegen — genau das war bis 0.11.x die Täuschung bei kleinen Videos.
+	eigeneGroesse, err := VMAFMessen(ctx, probe, referenz, 0, 0, e)
+	if err != nil {
+		t.Fatalf("VMAF in eigener Grösse: %v", err)
+	}
+	if wert >= eigeneGroesse {
+		t.Errorf("vergrössert gemessen %.2f, in eigener Grösse %.2f - vergrössert muss strenger sein",
+			wert, eigeneGroesse)
 	}
 }
 
@@ -156,6 +170,41 @@ func TestUmpackenMitEchtemFFmpeg(t *testing.T) {
 	}
 	if a, b := bildPruefsumme(quelle), bildPruefsumme(ergebnis); a != b {
 		t.Errorf("das Bild hat sich beim Umpacken verändert: %s gegen %s", a, b)
+	}
+}
+
+// Die Vorauswahl mit echtem ffprobe: ein Video unter 720p wird ohne Messung nur
+// umgepackt (seit 0.12.0), ein 720p-Video nicht — auch wenn es kürzer ist als
+// die Mindestdauer fürs Messen, gilt für das kleine die Umpack-Regel.
+func TestKandidatPruefenKleinesVideoNurUmpacken(t *testing.T) {
+	ffmpeg := os.Getenv("CLOUDFORGE_TEST_FFMPEG")
+	ffprobe := os.Getenv("CLOUDFORGE_TEST_FFPROBE")
+	if ffmpeg == "" || ffprobe == "" {
+		t.Skip("CLOUDFORGE_TEST_FFMPEG und CLOUDFORGE_TEST_FFPROBE nicht gesetzt")
+	}
+	ordner := t.TempDir()
+	e := standardWerte()
+	e.FFmpegPfad, e.FFprobePfad = ffmpeg, ffprobe
+
+	erzeugen := func(name, groesse string) string {
+		pfad := filepath.Join(ordner, name)
+		befehl := exec.Command(ffmpeg, "-nostdin", "-loglevel", "error",
+			"-f", "lavfi", "-i", "testsrc2=size="+groesse+":rate=25:duration=5",
+			"-c:v", "libx264", "-preset", "ultrafast", pfad)
+		if ausgabe, err := befehl.CombinedOutput(); err != nil {
+			t.Fatalf("Testvideo %s nicht erzeugbar: %v (%s)", groesse, err, ausgabe)
+		}
+		return pfad
+	}
+
+	klein := KandidatPruefen(erzeugen("klein.mp4", "720x540"), e)
+	if klein.Grund != KleineAufloesung || !klein.NurUmpacken() {
+		t.Errorf("720x540: Umpacken wegen kleiner Aufloesung erwartet, bekommen %q (Fehler %v)",
+			klein.Grund, klein.Fehler)
+	}
+	hd := KandidatPruefen(erzeugen("hd.mp4", "1280x720"), e)
+	if hd.Grund == KleineAufloesung {
+		t.Errorf("1280x720 darf nicht als klein gelten")
 	}
 }
 

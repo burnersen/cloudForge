@@ -31,7 +31,7 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.11.4                                   Datei 2 von 3
+       CloudForge 0.12.0                                   Datei 2 von 3
        -----------------------------------------------------------------
        OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 97,3  in 42 Min
 
@@ -84,9 +84,10 @@ Neben jedem Video entstehen zwei Ordner:
 Beispiel: Aus  Daten/Film.mp4  wird  Daten/output/Film.av1.mkv,
           und  Film.mp4  liegt danach in  Daten/originals/
 
-Lohnt sich das Umwandeln nicht (die Datei ist schon AV1, schon sehr schlank
-oder würde kaum kleiner), wird sie - wie bei NVENCForge - nur verlustfrei
-nach MKV umgepackt: Das Bild bleibt genau gleich. Sie heißt dann zum Beispiel
+Lohnt sich das Umwandeln nicht (die Datei ist schon AV1, kleiner als 720p,
+schon sehr schlank oder würde kaum kleiner), wird sie - wie bei NVENCForge -
+nur verlustfrei nach MKV umgepackt: Das Bild bleibt genau gleich. Sie heißt
+dann zum Beispiel
 Daten/output/Film.h264.mkv  (die Endung nennt das alte Format), und das
 Original wandert wie sonst nach "originals".
 
@@ -322,6 +323,10 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         Ab Werk 96 als Kompromiss aus Qualität und Ersparnis (vorher 97).
         Filme mit 50 Bildern/s erreichen 98 meist gar nicht - dort bleibt
         CloudForge knapp unter dem besten Wert.
+        Kleinere Videos (z. B. 720p) misst CloudForge seit 0.12.0 so, wie
+        sie im Vollbild auf einem 1080p-Schirm aussehen. Vorher kamen sie zu
+        gut weg und sahen trotz gleicher Zahl pixeliger aus. Unter 720p wird
+        gar nicht umgewandelt, nur verlustfrei umgepackt.
         Wer das Ziel ändert, passt auch  ankerNiedrig  und  ankerHoch  an
         (steht in der Einstellungsdatei erklärt).
 

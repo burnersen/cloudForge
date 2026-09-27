@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.11.4"
+const appVersion = "0.12.0"
 
 func main() {
 	err := starten()
@@ -472,6 +472,12 @@ func eineDateiAnalysieren(ctx context.Context, anz *Anzeige, nummer, gesamt int,
 	anz.Zeile("  %s  |  %dp mit %s Bildern/s  |  %s Film",
 		groesseText(info.GroesseBytes), info.Hoehe, komma(info.FPS, 0),
 		uhrText(time.Duration(info.DauerSek)*time.Second))
+
+	// Wie im echten Lauf (KandidatPruefen): Unter 720p wird gar nicht gemessen.
+	if unter720p(info.Breite, info.Hoehe) {
+		anz.Zeile("  Wuerde nur verlustfrei UMGEPACKT: %s", KleineAufloesung)
+		return nil
+	}
 
 	arbeitsplatz, err := os.MkdirTemp(e.ArbeitsOrdner, arbeitsVorsilbe)
 	if err != nil {

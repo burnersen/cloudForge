@@ -46,8 +46,8 @@ CloudForge ist für große Video-Sammlungen in einem Cloud-Speicher gedacht, der
 
 Bedient wird es ohne Terminal: Dateien oder ganze Ordner mit der Maus auf ein Schreibtisch-Symbol ziehen, fertig.
 
-- **Auto-CQ mit VMAF** – an mehreren Stellen jedes Films wird probeweise umgewandelt und mit dem Original verglichen. Gewählt wird die kleinste Datei, die das Qualitätsziel noch hält.
-- **Lohnt sich nicht? Dann nur umpacken** – ist eine Datei schon AV1, schon sehr schlank oder würde sie kaum kleiner, wird sie verlustfrei nach MKV umgepackt. Das Bild bleibt bitgleich.
+- **Auto-CQ mit VMAF** – an mehreren Stellen jedes Films wird probeweise umgewandelt und mit dem Original verglichen. Gewählt wird die kleinste Datei, die das Qualitätsziel noch hält. Videos unter 1080p werden dafür auf 1080p vergrößert gemessen – so, wie sie im Vollbild aussehen.
+- **Lohnt sich nicht? Dann nur umpacken** – ist eine Datei schon AV1, kleiner als 720p, schon sehr schlank oder würde sie kaum kleiner, wird sie verlustfrei nach MKV umgepackt. Das Bild bleibt bitgleich.
 - **Prüfkette** – Größe, Spieldauer, Ton- und Untertitelspuren werden mit dem Original verglichen; auf Wunsch wird jedes Ergebnis komplett durchgelesen.
 - **Abbrechen ist ungefährlich** – Fenster zu oder Strg+C: Halbfertiges verschwindet, das Original bleibt unberührt, Fertiges bleibt fertig.
 - **Nächste Datei vorab holen** – während ein Film umgewandelt wird, kommt der nächste schon aus der Cloud (spart etwa 3 Minuten je Film).

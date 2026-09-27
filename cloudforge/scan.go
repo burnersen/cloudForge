@@ -71,6 +71,7 @@ const (
 	NichtUebersprungen Uebersprungen = ""
 	SchonAV1           Uebersprungen = "ist bereits AV1"
 	SchonSchlank       Uebersprungen = "Bitrate schon zu niedrig, nichts zu holen"
+	KleineAufloesung   Uebersprungen = "Aufloesung unter 720p"
 	ErgebnisDa         Uebersprungen = "Ergebnis liegt bereits im Ausgabeordner"
 	KeineVideospur     Uebersprungen = "keine brauchbare Videospur"
 	ZuKurz             Uebersprungen = "zu kurz zum Messen"
@@ -91,10 +92,35 @@ type Kandidat struct {
 func (k Kandidat) Lohnt() bool { return k.Grund == NichtUebersprungen && k.Fehler == nil }
 
 // NurUmpacken sagt, ob die Datei statt umgewandelt nur verlustfrei nach MKV
-// umgepackt wird (seit 0.11.0, wie NVENCForge): Sie ist schon AV1, oder ihre
-// Bitrate liegt so tief, dass ein Umwandeln nichts mehr herausholt.
+// umgepackt wird (seit 0.11.0, wie NVENCForge): Sie ist schon AV1, ihre
+// Bitrate liegt so tief, dass ein Umwandeln nichts mehr herausholt, oder sie
+// ist kleiner als 720p (seit 0.12.0).
 func (k Kandidat) NurUmpacken() bool {
-	return k.Fehler == nil && (k.Grund == SchonAV1 || k.Grund == SchonSchlank)
+	return k.Fehler == nil && (k.Grund == SchonAV1 || k.Grund == SchonSchlank || k.Grund == KleineAufloesung)
+}
+
+// Unter 720p wird nie umgewandelt, nur verlustfrei umgepackt (seit 0.12.0,
+// Nutzerwahl 27.09.2026): Solche Videos werden im Vollbild stark vergrössert,
+// jeder Kodierfehler mit, und an Platz ist bei ihnen wenig zu holen. Verglichen
+// werden die kurze und die lange Kante, damit Breitbild (1280x536) und
+// Hochkant (720x1280) als 720p zählen.
+const (
+	kurzeKante720p = 720
+	langeKante720p = 1280
+)
+
+// unter720p sagt, ob beide Kanten eines Videos unter denen von 720p liegen.
+// Unbekannte Masse zählen nicht als klein — sonst würde bei einem Lesefehler
+// womöglich alles nur umgepackt.
+func unter720p(breite, hoehe int) bool {
+	if breite <= 0 || hoehe <= 0 {
+		return false
+	}
+	lang, kurz := breite, hoehe
+	if kurz > lang {
+		lang, kurz = kurz, lang
+	}
+	return kurz < kurzeKante720p && lang < langeKante720p
 }
 
 // mindestDauerSek: kürzere Dateien lassen sich nicht sinnvoll in Fenstern
@@ -245,6 +271,12 @@ func KandidatPruefen(pfad string, e Einstellungen) Kandidat {
 	}
 	if strings.EqualFold(info.VideoCodec, "av1") {
 		k.Grund = SchonAV1
+		return k
+	}
+	// Vor der Mindestdauer: Umpacken braucht keine Messfenster, auch ein
+	// kurzes kleines Video wird also umgepackt statt liegengelassen.
+	if unter720p(info.Breite, info.Hoehe) {
+		k.Grund = KleineAufloesung
 		return k
 	}
 	if info.DauerSek < mindestDauerSek {

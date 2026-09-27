@@ -144,7 +144,7 @@ func CRFFinden(ctx context.Context, quelle string, info VideoInfo, arbeitsOrdner
 		ctx:         ctx,
 		e:           e,
 		bericht:     bericht,
-		probe:       echteProbe(ctx, referenz, arbeitsOrdner, e),
+		probe:       echteProbe(ctx, referenz, arbeitsOrdner, info.Breite, info.Hoehe, e),
 		quelleBytes: quelleBytes,
 	}
 	ergebnis, err := sucher.bestimmen()
@@ -171,8 +171,9 @@ func (s *crfSuche) bestimmen() (AutoCQErgebnis, error) {
 // probeMessung kodiert die Messausschnitte mit einem CRF und misst sie.
 type probeMessung func(crf int) (vmaf float64, bytes int64, err error)
 
-// echteProbe misst mit ffmpeg an der Vergleichsdatei.
-func echteProbe(ctx context.Context, referenz, ordner string, e Einstellungen) probeMessung {
+// echteProbe misst mit ffmpeg an der Vergleichsdatei. breite und hoehe sind
+// die Masse der Quelle — danach richtet sich, ob für die Messung vergrössert wird.
+func echteProbe(ctx context.Context, referenz, ordner string, breite, hoehe int, e Einstellungen) probeMessung {
 	return func(crf int) (float64, int64, error) {
 		probe := filepath.Join(ordner, fmt.Sprintf("probe_crf%d.mkv", crf))
 		defer os.Remove(probe)
@@ -181,7 +182,7 @@ func echteProbe(ctx context.Context, referenz, ordner string, e Einstellungen) p
 		if err := Kodieren(ctx, auftrag, e, 0, nil); err != nil {
 			return 0, 0, err
 		}
-		wert, err := VMAFMessen(ctx, probe, referenz, e)
+		wert, err := VMAFMessen(ctx, probe, referenz, breite, hoehe, e)
 		if err != nil {
 			return 0, 0, err
 		}

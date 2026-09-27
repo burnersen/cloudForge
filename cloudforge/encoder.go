@@ -219,14 +219,13 @@ func ProbeSchneiden(ctx context.Context, quelle, ziel string, fenster []Fenster,
 // 97,407 heraus, der Messschritt wurde 5 s schneller. Die Bildpaarung bleibt
 // davon unberührt — gepaart wird weiter jedes Bild, nur gerechnet wird
 // seltener.
-func VMAFMessen(ctx context.Context, probe, referenz string, e Einstellungen) (float64, error) {
+//
+// breite und hoehe sind die Masse der Quelle: Ist sie kleiner als 1080p, wird
+// auf 1080p vergrössert gemessen (seit 0.12.0, siehe vmafMessgroesse).
+func VMAFMessen(ctx context.Context, probe, referenz string, breite, hoehe int, e Einstellungen) (float64, error) {
 	// Alle Kerne: ffmpeg läuft mit niedrigster Priorität (schonenderBefehl),
 	// der Desktop behält trotzdem Vorrang.
-	const nachNummer = "settb=1/25,setpts=N" // Zeitbasis beliebig, Hauptsache gleich
-	const jedesNteBild = 3
-	filter := fmt.Sprintf(
-		"[0:v]%s[probe];[1:v]%s[ref];[probe][ref]libvmaf=n_threads=%d:n_subsample=%d",
-		nachNummer, nachNummer, runtime.NumCPU(), jedesNteBild)
+	filter := vmafFilter(breite, hoehe, runtime.NumCPU())
 
 	args := []string{
 		"-nostdin", "-hide_banner", "-nostats",
@@ -248,6 +247,66 @@ func VMAFMessen(ctx context.Context, probe, referenz string, e Einstellungen) (f
 		return 0, fmt.Errorf("VMAF-Messung fehlgeschlagen: %w (%s)", err, letzteZeilen(ausgabe.String(), 3))
 	}
 	return vmafAusAusgabe(ausgabe.String())
+}
+
+// Das VMAF-Standardmodell ist für ein Bild gebaut, das einen 1080p-Schirm füllt.
+const (
+	vmafSchirmLang = 1920
+	vmafSchirmKurz = 1080
+)
+
+// vmafMessgroesse sagt, auf welche Grösse beide Seiten vor der Messung
+// gebracht werden.
+//
+// Warum vergrössern (seit 0.12.0): VMAF bewertet jedes Bild so, als füllte es
+// einen 1080p-Schirm. Ein kleineres Video in seiner eigenen Grösse gemessen
+// kommt deshalb zu gut weg — geschaut wird es im Vollbild, und dort wird jeder
+// Kodierfehler mit vergrössert. Gemessen am 27.09.2026 an fertigen Filmen,
+// eigene Grösse gegen 1080p: 720p 96,2 gegen 92,9, 540p 95,2 gegen 88,4,
+// 404p 97,0 gegen 87,8 — der Nutzer fand genau diese Dateien pixelig.
+//
+// Vergrössert wird wie beim Abspielen im Vollbild: bis die lange Kante 1920
+// oder die kurze 1080 erreicht, im gleichen Seitenverhältnis. Hochkant zählt
+// genauso, nur gedreht. Ab 1080p und bei unbekannten Massen bleibt alles, wie
+// es ist. Anamorphe Quellen (nicht quadratische Bildpunkte) werden nicht eigens
+// behandelt: Ihre Höhe stimmt, und nach der richtet sich der Sitzabstand, auf
+// den das Modell eingestellt ist.
+func vmafMessgroesse(breite, hoehe int) (zielBreite, zielHoehe int, vergroessern bool) {
+	if breite <= 0 || hoehe <= 0 {
+		return breite, hoehe, false
+	}
+	lang, kurz := breite, hoehe
+	if kurz > lang {
+		lang, kurz = kurz, lang
+	}
+	faktor := math.Min(float64(vmafSchirmLang)/float64(lang), float64(vmafSchirmKurz)/float64(kurz))
+	if faktor <= 1 {
+		return breite, hoehe, false
+	}
+	return geradeRunden(float64(breite) * faktor), geradeRunden(float64(hoehe) * faktor), true
+}
+
+// geradeRunden rundet auf die nächste gerade Zahl — das Farbformat 4:2:0
+// braucht gerade Kantenlängen. Über den Schirm hinaus rundet es nie: Was
+// höchstens 1080 ist, wird höchstens 1080.
+func geradeRunden(wert float64) int {
+	return int(math.Round(wert/2)) * 2
+}
+
+// vmafFilter baut den Messgraphen. Beide Seiten werden nach Bildnummer gepaart
+// (siehe VMAFMessen) und, wo nötig, mit demselben Filter vergrössert — sonst
+// würde der Unterschied der Filter mitgemessen statt der Kodierfehler.
+func vmafFilter(breite, hoehe, threads int) string {
+	const nachNummer = "settb=1/25,setpts=N" // Zeitbasis beliebig, Hauptsache gleich
+	const jedesNteBild = 3
+
+	vorbereitung := nachNummer
+	if zielBreite, zielHoehe, vergroessern := vmafMessgroesse(breite, hoehe); vergroessern {
+		vorbereitung += fmt.Sprintf(",scale=%d:%d:flags=bicubic", zielBreite, zielHoehe)
+	}
+	return fmt.Sprintf(
+		"[0:v]%s[probe];[1:v]%s[ref];[probe][ref]libvmaf=n_threads=%d:n_subsample=%d",
+		vorbereitung, vorbereitung, threads, jedesNteBild)
 }
 
 // vmafAusAusgabe sucht den Punktwert in der ffmpeg-Ausgabe.

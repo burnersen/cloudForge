@@ -167,9 +167,9 @@ func TestLaufBilanzZaehlt(t *testing.T) {
 	}
 }
 
-func TestNurUmpackenBeiSchlankUndAV1(t *testing.T) {
+func TestNurUmpackenGruende(t *testing.T) {
 	faelle := map[Uebersprungen]bool{
-		SchonAV1: true, SchonSchlank: true,
+		SchonAV1: true, SchonSchlank: true, KleineAufloesung: true,
 		ErgebnisDa: false, ZuKurz: false, ImOriginalOrdner: false, NichtMehrDa: false, NichtUebersprungen: false,
 	}
 	for grund, erwartet := range faelle {
@@ -179,6 +179,26 @@ func TestNurUmpackenBeiSchlankUndAV1(t *testing.T) {
 	}
 	if (Kandidat{Grund: SchonSchlank, Fehler: os.ErrNotExist}).NurUmpacken() {
 		t.Error("mit Lesefehler wird nichts umgepackt")
+	}
+}
+
+// Unter 720p heisst: BEIDE Kanten liegen unter denen von 1280x720. Breitbild
+// mit voller 720p-Breite und Hochkant-720p zählen nicht als klein.
+func TestUnter720p(t *testing.T) {
+	faelle := []struct {
+		breite, hoehe int
+		klein         bool
+	}{
+		{720, 404, true}, {720, 540, true}, {960, 540, true}, {720, 576, true},
+		{404, 720, true}, // Hochkant, kleiner als 720p
+		{1280, 720, false}, {1280, 536, false}, {720, 1280, false},
+		{1920, 1080, false}, {3840, 2160, false},
+		{0, 0, false}, {720, 0, false}, // Masse unbekannt: nicht als klein werten
+	}
+	for _, f := range faelle {
+		if bekommen := unter720p(f.breite, f.hoehe); bekommen != f.klein {
+			t.Errorf("%dx%d: unter720p = %v, erwartet %v", f.breite, f.hoehe, bekommen, f.klein)
+		}
 	}
 }
 

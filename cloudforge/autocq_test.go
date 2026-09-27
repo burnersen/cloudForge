@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -299,6 +300,57 @@ func TestVMAFAusAusgabeMeldetFehlendenWert(t *testing.T) {
 		if _, err := vmafAusAusgabe(ausgabe); err == nil {
 			t.Errorf("%s: Fehler erwartet, keiner gekommen", name)
 		}
+	}
+}
+
+// Kleinere Videos werden für die Messung so vergrössert, wie sie im Vollbild
+// auf einem 1080p-Schirm erscheinen — die Masse der drei Filme vom 27.09.2026
+// sind dabei (1280x720, 720x540, 720x404).
+func TestVmafMessgroesse(t *testing.T) {
+	faelle := []struct {
+		name                  string
+		breite, hoehe         int
+		zielBreite, zielHoehe int
+		vergroessern          bool
+	}{
+		{"720p", 1280, 720, 1920, 1080, true},
+		{"540p im Format 4:3", 720, 540, 1440, 1080, true},
+		{"404p, Höhe auf gerade Zahl gerundet", 720, 404, 1920, 1078, true},
+		{"720p-Breitbild", 1280, 536, 1920, 804, true},
+		{"krumme Breite", 853, 480, 1920, 1080, true},
+		{"Hochkant 720p", 720, 1280, 1080, 1920, true},
+		{"1080p bleibt", 1920, 1080, 1920, 1080, false},
+		{"1080p-Breitbild bleibt", 1920, 800, 1920, 800, false},
+		{"4K bleibt", 3840, 2160, 3840, 2160, false},
+		{"Masse unbekannt", 0, 0, 0, 0, false},
+	}
+	for _, f := range faelle {
+		breite, hoehe, vergroessern := vmafMessgroesse(f.breite, f.hoehe)
+		if breite != f.zielBreite || hoehe != f.zielHoehe || vergroessern != f.vergroessern {
+			t.Errorf("%s: %dx%d ergab %dx%d (vergroessern %v), erwartet %dx%d (%v)",
+				f.name, f.breite, f.hoehe, breite, hoehe, vergroessern,
+				f.zielBreite, f.zielHoehe, f.vergroessern)
+		}
+	}
+}
+
+// Beide Seiten müssen genau gleich vorbereitet werden: gepaart nach Bildnummer
+// und — nur bei kleinen Videos — mit demselben Filter vergrössert.
+func TestVmafFilterVergroessertBeideSeitenGleich(t *testing.T) {
+	klein := vmafFilter(1280, 720, 8)
+	if n := strings.Count(klein, "scale=1920:1080:flags=bicubic"); n != 2 {
+		t.Errorf("720p: Vergrössern auf beiden Seiten erwartet, %d-mal gefunden: %s", n, klein)
+	}
+	if n := strings.Count(klein, "setpts=N"); n != 2 {
+		t.Errorf("720p: Bildnummer-Paarung auf beiden Seiten erwartet, %d-mal gefunden: %s", n, klein)
+	}
+
+	gross := vmafFilter(1920, 1080, 8)
+	if strings.Contains(gross, "scale=") {
+		t.Errorf("1080p darf nicht vergrössert werden: %s", gross)
+	}
+	if !strings.Contains(gross, "libvmaf=n_threads=8:n_subsample=3") {
+		t.Errorf("Messung selbst verändert: %s", gross)
 	}
 }
 
