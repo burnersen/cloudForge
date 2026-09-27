@@ -1,0 +1,127 @@
+# Macht aus einem hochgeladenen Versions-Tag ein fertiges Release: baut die
+# beiden Linux-Programme, schnürt daraus das Einrichtungspaket und
+# veröffentlicht es als Anhang des Releases.
+#
+# Das Paket CloudForge-Installer.tar.gz enthält dieselben vier Dateien wie das
+# Paket in der pCloud: installieren.sh, ANLEITUNG.txt, cloudforge-x86_64 und
+# cloudforge-aarch64. Sein Name bleibt bei jeder Fassung gleich, damit
+# .../releases/latest/download/CloudForge-Installer.tar.gz immer auf die
+# neueste zeigt (Weg C in der Anleitung).
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Für ein Tag, das es schon vor diesem Workflow gab, und für einen zweiten
+  # Versuch nach einem Fehlschlag, ohne das Tag verschieben zu müssen.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Vorhandenes Tag, das veröffentlicht werden soll (zum Beispiel v0.11.4)'
+        required: true
+
+# Der Standard-Schlüssel darf nur lesen. Ein Release anlegen und seinen
+# Anhang hochladen braucht Schreibrecht auf den Inhalt des Repos.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          # Die Nachricht des annotierten Tags wird zum Release-Text, und die
+          # gibt es nur in einer Kopie, die die Tag-Objekte mitbringt.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          # Bewusst NICHT go-version-file: "go 1.22" in go.mod ist die älteste
+          # Version, mit der der Quelltext baut - nicht die, mit der ein
+          # Release gebaut werden soll. Die bekäme keine Sicherheits-Updates.
+          go-version: 'stable'
+          cache: false
+
+      # Ein Tag, das nicht zu appVersion passt, würde ein Programm ausliefern,
+      # das sich mit der falschen Version meldet. Billiger, das hier zu
+      # merken, als hinterher ein veröffentlichtes Paket zu ersetzen.
+      - name: Tag passt zu appVersion
+        run: |
+          im_code=$(sed -n 's/^const appVersion = "\(.*\)"$/\1/p' cloudforge/main.go)
+          if [ -z "$im_code" ]; then
+            echo "::error::appVersion in cloudforge/main.go nicht gefunden"
+            exit 1
+          fi
+          if [ "v$im_code" != "$TAG" ]; then
+            echo "::error::Tag $TAG passt nicht zu appVersion $im_code in cloudforge/main.go"
+            exit 1
+          fi
+          echo "Tag $TAG passt zu appVersion $im_code."
+
+      - name: go test
+        working-directory: cloudforge
+        run: go test -count=1 ./...
+
+      # -trimpath und -ldflags="-s -w": dieselben Schalter wie bei jedem
+      # bisher ausgelieferten Programm - keine Pfade des Bau-Rechners im
+      # Programm, keine Debug-Tabellen.
+      - name: Bauen
+        working-directory: cloudforge
+        run: |
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../CloudForge-Installer/cloudforge-x86_64 .
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o ../CloudForge-Installer/cloudforge-aarch64 .
+
+      # Ausführbar, obwohl die Anleitung ohnehin "bash installieren.sh" sagt:
+      # Wer ./installieren.sh tippt, soll kein "Keine Berechtigung" sehen.
+      # tar speichert die Rechte mit; Besitzer 0, damit im Paket nicht der
+      # Benutzer des Runners steht.
+      - name: Paket schnüren
+        run: |
+          chmod 755 CloudForge-Installer/installieren.sh CloudForge-Installer/cloudforge-x86_64 CloudForge-Installer/cloudforge-aarch64
+          chmod 644 CloudForge-Installer/ANLEITUNG.txt
+          tar --owner=0 --group=0 --numeric-owner -czf CloudForge-Installer.tar.gz \
+            CloudForge-Installer/installieren.sh \
+            CloudForge-Installer/ANLEITUNG.txt \
+            CloudForge-Installer/cloudforge-x86_64 \
+            CloudForge-Installer/cloudforge-aarch64
+          tar -tvzf CloudForge-Installer.tar.gz
+
+      # gh ist auf den GitHub-Runnern vorinstalliert und meldet sich mit dem
+      # Schlüssel an, den dieser Workflow ohnehin hat - kein persönlicher
+      # Zugangsschlüssel nötig.
+      - name: Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          titel="CloudForge $TAG"
+          echo "Veröffentliche $TAG mit CloudForge-Installer.tar.gz ($(stat -c %s CloudForge-Installer.tar.gz) Bytes)."
+
+          # Der Release-Text ist die Nachricht des annotierten Tags - eine
+          # Quelle, einmal geschrieben, in dem Moment, in dem die Fassung
+          # entsteht. Ein Tag ohne Nachricht ist ein Fehler, bei dem es sich
+          # lohnt anzuhalten, statt ein leeres Release zu veröffentlichen.
+          git tag -l --format='%(contents)' "$TAG" > release-notes.md
+          if [ -z "$(tr -d '[:space:]' < release-notes.md)" ]; then
+            echo "::error::Tag $TAG hat keine Nachricht - daraus entsteht der Release-Text. Mit 'git tag -a' anlegen."
+            exit 1
+          fi
+
+          # gh release view endet mit einem Fehler, wenn es das Release noch
+          # nicht gibt. Ein zweiter Lauf (korrigierter Workflow, neuer Versuch)
+          # muss das Vorhandene auffrischen, statt daran zu scheitern.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # --draft=false ist kein Schmuck: Wird ein Tag gelöscht, macht
+            # GitHub sein Release zum Entwurf, und den sieht nur der Besitzer.
+            echo "Release $TAG gibt es schon - Text und Paket werden aufgefrischt."
+            gh release edit "$TAG" --title "$titel" --notes-file release-notes.md --draft=false
+            gh release upload "$TAG" CloudForge-Installer.tar.gz --clobber
+          else
+            gh release create "$TAG" CloudForge-Installer.tar.gz --title "$titel" --notes-file release-notes.md
+          fi

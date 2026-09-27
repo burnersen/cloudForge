@@ -1,0 +1,4 @@
+# Alle Textdateien mit Linux-Zeilenenden, auch in einer Kopie unter Windows:
+# Das Einrichtungs-Skript läuft unter Linux, und bash bricht an
+# Windows-Zeilenenden ab. gofmt erwartet ebenfalls LF.
+* text=auto eol=lf

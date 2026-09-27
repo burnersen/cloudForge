@@ -1,0 +1,416 @@
+===============================================================================
+                         CLOUDFORGE - DIE ANLEITUNG
+===============================================================================
+
+Was CloudForge macht
+--------------------
+CloudForge wandelt Videos in das platzsparende Format AV1 um. Die Qualität
+misst es dabei für jede Datei selbst nach (Auto-CQ), damit das Bild gut
+bleibt. Das Ergebnis ist meistens nur noch halb so groß oder kleiner.
+
+Dein Original wird dabei NIE gelöscht, bevor das Ergebnis fertig, geprüft und
+sicher abgelegt ist.
+
+
+===============================================================================
+TEIL 1 - SO BENUTZT DU ES (der Alltag)
+===============================================================================
+
+  1. Öffne den Dateimanager (das Ordner-Symbol in der Leiste).
+
+  2. Geh zu deinen Videos, zum Beispiel:  pCloudDrive  >  Daten
+
+  3. Markiere ein oder mehrere Videos - oder nimm gleich einen ganzen Ordner.
+
+  4. Zieh sie mit gedrückter linker Maustaste auf das Schreibtisch-Symbol
+
+           "CloudForge: Dateien umwandeln"
+
+     und lass los.
+
+  5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
+     Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
+
+       CloudForge 0.11.4                                   Datei 2 von 3
+       -----------------------------------------------------------------
+       OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 97,3  in 42 Min
+
+       >> [2/3] Urlaubsfilm.mp4
+         1,81 GB  |  1080p mit 50 Bildern/s  |  52 Min Film  |  dauert etwa 45 Min
+         1/5 Datei holen       1,81 GB, vorab geholt (0 Sek)
+         2/5 Qualitaet messen  gewaehlt CRF 22, erwartet VMAF 97,1 (2 Min)
+           Naechste Datei wird waehrenddessen schon geholt: Film3.mp4
+         3/5 Umwandeln         laeuft ...
+
+         [██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░]   45,3 %
+         Position   0:23:31    Laufzeit   0:18:40    Rest   0:22:35
+         Bilder/s   63,0       Bitrate    5,1 Mbit   Tempo  1,26x
+         Bild       70530      1853 MB  →  ~1020 MB   (–833 MB / 45 % kleiner)
+         Gesamt     [█████████░░░░░░░░░░░░░░░]   37,6 %  (2/3)  noch ca. 1 Std 5 Min
+
+     Das Fenster darfst du jederzeit größer oder kleiner ziehen - die
+     Übersicht zeichnet sich dann neu. Die Prozentzahl steht auch oben im
+     Fenstertitel und in der Taskleiste - so siehst du den Stand, auch wenn
+     das Fenster klein gemacht ist.
+
+     Während ein Film umgewandelt wird, holt CloudForge schon den nächsten
+     aus der Cloud ("vorab geholt"). Das spart etwa 3 Minuten je Film.
+     Umgewandelt wird trotzdem immer nur einer.
+
+  6. Wenn alles fertig ist, erscheint eine kleine Nachricht am Bildschirmrand.
+     Die Übersicht verschwindet, und im Fenster steht als gewöhnlicher Text
+     der ganze Verlauf - bei jeder Datei, wo alles liegt:
+
+       FERTIG nach 44 Min: 0,86 GB statt 1,81 GB (52 % kleiner), VMAF 97,1
+       Ergebnis:  .../output/Urlaubsfilm.av1.mkv
+       Original:  .../originals/Urlaubsfilm.mp4
+
+     Ganz unten steht die Bilanz - erst dieser Lauf, dann alle Läufe zusammen:
+
+       Dieser Lauf:   3 umgewandelt, 1 umgepackt, 0 uebersprungen, 0 mit Fehler
+                      4,12 GB gespart in 2 Std 14 Min
+       Gesamtbilanz:  83,20 GB gespart in 20 Std 5 Min (29 Dateien)
+
+  7. Fenster mit der Eingabetaste (Enter) schließen. Fertig.
+
+
+Wo liegt danach was?
+--------------------
+Neben jedem Video entstehen zwei Ordner:
+
+    output      das neue, kleine Video  (Name endet auf .av1.mkv)
+    originals   dein altes Video - unverändert
+
+Beispiel: Aus  Daten/Film.mp4  wird  Daten/output/Film.av1.mkv,
+          und  Film.mp4  liegt danach in  Daten/originals/
+
+Lohnt sich das Umwandeln nicht (die Datei ist schon AV1, schon sehr schlank
+oder würde kaum kleiner), wird sie - wie bei NVENCForge - nur verlustfrei
+nach MKV umgepackt: Das Bild bleibt genau gleich. Sie heißt dann zum Beispiel
+Daten/output/Film.h264.mkv  (die Endung nennt das alte Format), und das
+Original wandert wie sonst nach "originals".
+
+
+===============================================================================
+TEIL 2 - WICHTIG ZU WISSEN
+===============================================================================
+
+* ES DAUERT.
+  Auf dem netcup-Server (gemessen 25.09.2026) braucht eine Stunde Film etwa
+  35 Minuten (Filme mit 30 Bildern/s) bis knapp 1 Stunde (50 Bilder/s). Der
+  Server rechnet ohne Grafikkarte. Lass ihn einfach machen, auch über Nacht.
+  Die Zeit, die bei jeder Datei steht, lernt CloudForge aus den letzten
+  fertigen Filmen - sie wird also mit jeder Datei genauer.
+
+* DAS FENSTER OFFEN LASSEN.
+  Klein machen (minimieren) ist in Ordnung. Den Remote-Desktop darfst du
+  schließen (das X oben am Remote-Desktop-Fenster) - der Server rechnet
+  weiter. ABER: Dich NICHT abmelden. Abmelden beendet alles.
+
+* ABBRECHEN IST UNGEFÄHRLICH.
+  Fenster schließen oder Strg+C drücken. Dann gilt:
+    - Das Original der angefangenen Datei bleibt unberührt.
+    - Halbfertiges wird entfernt.
+    - Alles, was schon fertig war, bleibt fertig.
+  Ziehst du dieselben Dateien später wieder auf das Symbol, macht CloudForge
+  genau dort weiter - fertige Dateien werden übersprungen.
+
+* MEHRMALS DATEIEN DRAUFZIEHEN IST ERLAUBT.
+  Es rechnet immer nur ein CloudForge gleichzeitig. Ziehst du, während eines
+  läuft, noch mehr Dateien auf das Symbol, geht ein zweites Fenster auf und
+  schreibt "CloudForge arbeitet gerade in einem anderen Fenster". Das ist
+  richtig so - es wartet und macht danach von selbst weiter.
+
+* PLATZ IN DER CLOUD WIRD ERST FREI, WENN DU DIE "originals" LÖSCHST.
+  Solange die Originale im Ordner "originals" liegen, brauchst du sogar etwas
+  mehr Platz als vorher. Schau dir ein paar Ergebnisse an. Wenn sie dir
+  gefallen, lösche die Ordner "originals" - erst dann ist der Platz gewonnen.
+
+* NICHTS WIRD DOPPELT GEMACHT - DIE ORDNER ENTSCHEIDEN.
+  Was schon ein Ergebnis im Ordner "output" hat, wird übersprungen; die
+  Ordner "output" und "originals" und alles, was auf .av1.mkv, .h264.mkv,
+  .h265.mkv oder .remux.mkv endet, fasst CloudForge nie an. Eine Liste, was
+  wann umgewandelt wurde, führt es nicht. Du kannst also ruhig einen ganzen
+  Ordner mehrmals draufziehen.
+  NOCHMAL UMWANDELN (zum Beispiel mit anderen Einstellungen): das Original
+  aus "originals" zurück an seinen Platz legen und das alte Ergebnis im
+  Ordner "output" umbenennen oder löschen - dann ist die Datei wieder offen.
+
+
+===============================================================================
+TEIL 3 - DIE AUTOMATIK
+===============================================================================
+
+Das zweite Symbol "CloudForge: Automatik" arbeitet immer denselben Ordner ab -
+praktisch für den großen Bestand.
+
+  Beim ersten Mal fragt es dich, welcher Ordner das sein soll:
+    - Zieh den Ordner mit der Maus IN DAS SCHWARZE FENSTER.
+    - Drück die Eingabetaste.
+  CloudForge merkt sich den Ordner. Ab dann reicht ein Doppelklick.
+
+  Ändern kannst du den Ordner in der Einstellungsdatei (siehe Teil 6),
+  in der Zeile  quellOrdner=
+
+DER ZEITPLAN - ganz ohne Fenster
+
+  Auf Wunsch arbeitet CloudForge den Automatik-Ordner alle 30 Minuten von
+  selbst ab. Dann reicht es, Videos in diesen Ordner der pCloud zu legen -
+  vom PC, vom Handy, von überall. Die größten Dateien kommen zuerst dran.
+
+  Einschalten (einmal im Terminal):   cloudforge -zeitplan an
+  Ausschalten:                        cloudforge -zeitplan aus
+
+  Wichtig:
+    - Das läuft nur, solange du am Server angemeldet bist UND die pCloud-App
+      läuft. Das Remote-Desktop-Fenster schließen ist in Ordnung - Abmelden
+      nicht. Nach einem Neustart des Servers: einmal per Remote-Desktop
+      anmelden und die pCloud-App starten, dann geht es von selbst weiter.
+    - Ziehst du Dateien aufs Symbol, während der Zeitplan arbeitet, macht er
+      nach seiner aktuellen Datei Platz für dich und macht danach weiter.
+    - Zusehen kannst du mit dem Symbol "CloudForge: Protokoll ansehen".
+
+DAS PROTOKOLL
+
+  Jeder Lauf - mit Fenster oder im Hintergrund - schreibt mit, was er tut:
+      ~/cloudforge/protokoll/2026-09-25.txt   (eine Datei je Tag)
+  Das Symbol "CloudForge: Protokoll ansehen" zeigt die letzten Zeilen und
+  danach laufend alles Neue. Protokolle älter als 30 Tage werden gelöscht.
+
+
+===============================================================================
+TEIL 4 - AUF EINEM NEUEN RECHNER EINRICHTEN
+===============================================================================
+
+Das Einrichtungspaket liegt in deiner pCloud im Ordner "cloudforge"
+(ganz oben, direkt im Hauptordner) und - immer in der neuesten Fassung -
+auf GitHub (Weg C). Darin liegen vier Dateien:
+
+    installieren.sh        das Einrichtungs-Skript
+    cloudforge-x86_64      das Programm für normale PCs und Server
+    cloudforge-aarch64     das Programm für ARM-Rechner
+    ANLEITUNG.txt          diese Anleitung
+
+WEG A - der neue Rechner hat schon pCloud Drive (am einfachsten):
+
+  1. Im Dateimanager öffnen:  pCloudDrive  >  cloudforge
+
+  2. Rechtsklick auf eine freie Stelle im Ordner  >  "Terminal hier öffnen".
+
+  3. Eintippen und Eingabetaste drücken:
+
+         bash installieren.sh
+
+  4. Warten, bis groß FERTIG dasteht (meist 1 bis 2 Minuten - das Skript
+     lädt dabei ffmpeg herunter, rund 140 MB).
+
+WEG B - ohne pCloud Drive (zum Beispiel über den Browser):
+
+  1. pCloud im Browser öffnen, den Ordner "cloudforge" herunterladen.
+     Er kommt als ZIP-Datei.
+
+  2. Die ZIP-Datei entpacken: Rechtsklick  >  "Hier entpacken".
+
+  3. Den entpackten Ordner öffnen, Rechtsklick auf eine freie Stelle
+     >  "Terminal hier öffnen".
+
+  4. Eintippen:   bash installieren.sh   - und warten, bis FERTIG dasteht.
+
+WEG C - direkt von GitHub (immer die neueste Fassung):
+
+  1. Ein Terminal öffnen, zum Beispiel: Rechtsklick auf den Schreibtisch
+     >  "Terminal hier öffnen".
+
+  2. Diese drei Zeilen nacheinander eintippen, jede mit der Eingabetaste:
+
+         curl -LO https://github.com/burnersen/cloudForge/releases/latest/download/CloudForge-Installer.tar.gz
+         tar xzf CloudForge-Installer.tar.gz
+         bash CloudForge-Installer/installieren.sh
+
+  3. Warten, bis groß FERTIG dasteht.
+
+     Was sich in welcher Fassung geändert hat, steht auf der Seite
+         https://github.com/burnersen/cloudForge/releases
+
+  Das war's. Die Symbole liegen danach auf dem Schreibtisch.
+
+  Nicht verwechseln: "cloudforge" in der pCloud ist nur das Einrichtungs-
+  paket. Das eingerichtete Programm landet in deinem persönlichen Ordner
+  unter  ~/cloudforge  - das sind zwei verschiedene Ordner.
+
+  Gut zu wissen:
+    - KEIN sudo nötig, kein Passwort. Das Skript verändert nichts am System,
+      alles landet im Ordner  ~/cloudforge  (das ~ steht für deinen
+      persönlichen Ordner).
+    - Mehrmals ausführen schadet nicht. Deine Einstellungen bleiben erhalten.
+    - Zum Aktualisieren auf eine neue CloudForge-Fassung genauso vorgehen.
+    - Hat der neue Rechner weniger als 8 Prozessorkerne, in der
+      Einstellungsdatei (Teil 6) die Zeile  kerne=  kleiner stellen - zum
+      Beispiel auf 2 bei einem Rechner mit 4 Kernen. Sonst wird der Rechner
+      während der Umwandlung zäh.
+
+  Falls das Skript meldet, dass curl oder xz fehlt, steht dabei der Befehl,
+  mit dem du es nachinstallierst (nur dafür braucht es einmal sudo).
+
+
+===============================================================================
+TEIL 5 - WENN ETWAS NICHT KLAPPT
+===============================================================================
+
+"Ich klicke auf das Symbol, aber es passiert nichts Sinnvolles."
+    Das Symbol "Dateien umwandeln" muss man mit Dateien FÜTTERN - also Videos
+    daraufziehen, nicht nur anklicken. Beim bloßen Anklicken erklärt das
+    Fenster genau das und schließt sich mit Enter.
+
+"Der Schreibtisch fragt, ob ich dem Starter vertraue."
+    "Trotzdem starten" wählen. Oder die Symbole neu anlegen lassen - dabei
+    werden sie gleich als vertrauenswürdig markiert. Im Terminal eintippen:
+        ~/cloudforge/cloudforge -starter
+
+"Die Symbole sind weg."
+    Genauso neu anlegen:   ~/cloudforge/cloudforge -starter
+
+"Es tut sich nichts / hängt es?"
+    Schau auf die "Laufzeit" in der Übersicht - sie zählt jede Sekunde weiter,
+    solange CloudForge arbeitet. Beim Schritt "Qualitaet messen" gibt es ein
+    paar Minuten lang keinen Balken - dort erscheinen nacheinander mehrere
+    Messwerte. Das ist normal.
+
+"Da steht UEBERSPRUNGEN ... Quelle schon stark komprimiert."
+    Alles in Ordnung. Die Datei ist schon so klein, dass AV1 sie nicht mehr
+    lohnend verkleinern kann, ohne sichtbar Qualität zu verlieren. Das
+    Original bleibt, wie es ist, und wird beim nächsten Lauf nicht noch
+    einmal versucht.
+
+"Da steht FEHLER bei einer Datei."
+    Das Original dieser Datei ist unberührt. CloudForge macht mit der nächsten
+    Datei weiter. Am Ende steht eine Liste mit allem, was nicht geklappt hat.
+    Beim nächsten Lauf wird die Datei erneut versucht.
+
+"Da steht: zu wenig Platz."
+    Auf dem Server ist die Festplatte zu voll. Alte Dateien löschen oder in
+    der Einstellungsdatei  platzReserveGB  kleiner stellen.
+
+"Da steht: CloudForge arbeitet gerade in einem anderen Fenster."
+    Alles in Ordnung - es läuft schon eine Umwandlung. Dieses Fenster wartet
+    und macht danach von selbst weiter.
+
+
+===============================================================================
+TEIL 6 - EINSTELLUNGEN (nur wenn du etwas ändern willst)
+===============================================================================
+
+Die Einstellungen stehen in der Datei:
+
+    ~/cloudforge/cloudforge.ini
+
+Öffnen: Rechtsklick auf die Datei  >  "Mit Mousepad öffnen" (oder einem
+anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
+
+    originalBehandlung=verschieben
+        verschieben  = Original kommt in den Ordner "originals" (sicher)
+        loeschen     = Original wird gelöscht (spart sofort Platz)
+        behalten     = Original bleibt, wo es ist
+
+    zielVMAF=96
+        Die Bildqualität. CloudForge sucht für jeden Film die kleinste Datei,
+        die diesen Wert mindestens erreicht. Gemessen an einer 1080p-Szene:
+            93   = sichtbar weicher, Klötzchen, Streifen  (etwa 1/5 der Größe)
+            96   = gut                                     (etwa 1/4)
+            97,5 = sehr gut                                (etwa 1/3)
+            98   = kaum vom Original zu unterscheiden     (etwa 1/2)
+        Ab Werk 96 als Kompromiss aus Qualität und Ersparnis (vorher 97).
+        Filme mit 50 Bildern/s erreichen 98 meist gar nicht - dort bleibt
+        CloudForge knapp unter dem besten Wert.
+        Wer das Ziel ändert, passt auch  ankerNiedrig  und  ankerHoch  an
+        (steht in der Einstellungsdatei erklärt).
+
+    kostenDeckelProzent=0
+        Der Kosten-Deckel wie bei NVENCForge: Das neue Bild darf höchstens
+        so viel Prozent des alten kosten. Bei Quellen, die schon stark
+        komprimiert sind, senkt er dafür die Qualität UNTER das Ziel.
+        Ab Werk aus (0): Gedeckelte Vergleichsclips mit VMAF 93 sahen
+        deutlich schlechter aus als das Original. Ohne Deckel bleibt die
+        Qualität beim Ziel - was dabei nicht genug spart, wird nur
+        verlustfrei umgepackt (siehe mindestErsparnisProzent).
+        Wer ihn trotzdem will: 50 = höchstens die Hälfte des Originals.
+
+    mindestErsparnisProzent=15
+        Wird eine Datei nicht mindestens so viel kleiner, wird sie nicht
+        umgewandelt, sondern nur verlustfrei nach MKV umgepackt (Bild bleibt
+        gleich) und in "output" gelegt - wie bei NVENCForge. CloudForge rechnet
+        das gleich nach der Qualitätsmessung aus (nach 2-4 Minuten) - so wird
+        keine Zeit an Dateien verschwendet, die sich nicht lohnen.
+        Ab Werk 15 (vorher 30): Auch Grenzfälle werden noch kleiner gemacht,
+        darunter lohnt die Rechenzeit kaum.
+
+    messfensterAnzahl=5
+        An so vielen Stellen misst CloudForge die Qualität, bevor es einen
+        Film umwandelt. Mit 3 Stellen lag die Größen-Vorhersage manchmal bis
+        10 Prozentpunkte neben dem ganzen Film, 5 treffen ihn besser. Mehr
+        Stellen messen genauer, dauern aber länger.
+
+    kerne=6
+        Wie stark SVT-AV1 parallel rechnet - keine feste Kernzahl. 6 ist
+        das Maximum, mehr nimmt SVT-AV1 nicht an. Ein Film belegt damit gut
+        6 der 8 Kerne. Der Desktop bleibt trotzdem bedienbar, weil CloudForge
+        mit niedrigster Priorität rechnet.
+
+    bittiefe=10
+        10 = beugt Streifen in Farbverläufen (Banding) vor. Kostet auf dem
+             netcup-Server nur etwa 20 % Tempo, die Datei wird nicht größer.
+        8  = etwas schneller, aber anfälliger für Streifen.
+
+    varianceBoost=nein
+        ja = SVT-AV1 gibt ruhigen, glatten und dunklen Flächen (Wände, Haut,
+             Schatten) mehr Daten - genau dort entstehen sonst Klötzchen und
+             Streifen. Die Datei wird dabei kaum größer (gemessen). Ob es dir
+             besser gefällt, zeigt nur ein Vergleich mit den Augen.
+
+    tune0=nein
+        ja = SVT-AV1 stimmt sich auf den Seheindruck ab statt auf eine
+             Rechengenauigkeit. Die Datei wird etwa 3 % größer (gemessen).
+             Ob es schärfer wirkt, zeigt nur ein Vergleich mit den Augen.
+
+        Zum Ausprobieren: Schalter auf ja stellen, speichern, ein paar Filme
+        umwandeln und mit früheren vergleichen. Welche Datei mit welcher
+        Einstellung entstanden ist, steht im Protokoll
+        ("Einstellungen: ... Variance Boost an ...").
+
+    vollpruefung=nein
+        ja = jedes Ergebnis vor dem Ablegen einmal komplett durchlesen.
+        Sicherer, kostet aber etwa 25 Minuten pro Film von 55 Minuten.
+        Die schnellen Prüfungen (Größe, Länge, Ton- und Untertitelspuren)
+        laufen immer. Einschalten, wenn du  originalBehandlung=loeschen
+        benutzt.
+
+    quellOrdner=
+        Der Ordner für die Automatik.
+
+Nach dem Ändern: speichern, fertig. Der nächste Lauf nimmt die neuen Werte.
+
+
+===============================================================================
+TEIL 7 - IM TERMINAL (für Neugierige)
+===============================================================================
+
+Alles, was die Symbole können, geht auch im Terminal:
+
+    cloudforge DATEI_ODER_ORDNER        umwandeln
+    cloudforge -automatik               den eingestellten Ordner abarbeiten
+    cloudforge -bericht ORDNER          nur anzeigen, was zu tun wäre
+                                        und wie viel Platz es bringt
+    cloudforge -analyse DATEI           nur messen, welche Qualitätsstufe
+                                        gewählt würde
+    cloudforge -starter                 Schreibtisch-Symbole neu anlegen
+    cloudforge -zeitplan an             alle 30 Minuten von selbst abarbeiten
+    cloudforge -zeitplan aus            Zeitplan wieder ausschalten
+    cloudforge -protokoll               Protokoll laufend ansehen
+    cloudforge -hilfe                   alle Möglichkeiten
+
+Falls "cloudforge" allein nicht gefunden wird (direkt nach der Einrichtung,
+vor dem nächsten Anmelden), den vollen Pfad nehmen:
+
+    ~/cloudforge/cloudforge -hilfe
+
+===============================================================================

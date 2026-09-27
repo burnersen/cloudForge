@@ -1,0 +1,61 @@
+# Prüft bei jedem Hochladen, ob CloudForge noch sauber baut und sich richtig
+# verhält. Läuft unter Linux, denn dort läuft auch das Programm.
+#
+# Was das beweisen kann und was nicht: Formatierung, go vet, alle Tests der
+# Programmlogik und dass auch die ARM-Fassung baut. Umwandeln kann es nichts -
+# auf dem Runner gibt es kein passendes ffmpeg (mit libvmaf und SVT-AV1). Die
+# Tests mit echtem ffmpeg gibt es trotzdem; sie laufen nur, wenn
+# CLOUDFORGE_TEST_FFMPEG und CLOUDFORGE_TEST_FFPROBE gesetzt sind, und werden
+# hier bewusst übersprungen.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudforge
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # "go 1.22" in go.mod ist nur die Mindestversion. Geprüft wird mit
+          # dem Go, mit dem auch die Releases gebaut werden.
+          go-version: 'stable'
+          # Ohne fremde Pakete gibt es keine go.sum - ein Cache hätte nichts
+          # zu tun und würde nur warnen.
+          cache: false
+
+      # gofmt -l zählt die Übeltäter nur auf und endet trotzdem mit 0 - erst
+      # dieser Schritt macht aus seiner Ausgabe ein Urteil.
+      - name: gofmt
+        run: |
+          unformatiert=$(gofmt -l .)
+          if [ -n "$unformatiert" ]; then
+            echo "::error::Diese Dateien sind nicht gofmt-sauber:"
+            echo "$unformatiert"
+            exit 1
+          fi
+          echo "Alle Quelltexte sind gofmt-sauber."
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -count=1 ./...
+
+      # Jedes Release liefert auch die ARM-Fassung aus, also muss sie hier
+      # ebenfalls bauen.
+      - name: go build (x86_64 und ARM)
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o /dev/null .
+          GOOS=linux GOARCH=arm64 go build -o /dev/null .

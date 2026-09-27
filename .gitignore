@@ -1,0 +1,15 @@
+# Gebaute Programme. Sie entstehen beim Bauen und im Release-Workflow und
+# werden nie eingecheckt - das fertige Paket hängt am jeweiligen Release.
+CloudForge-Installer/cloudforge-x86_64
+CloudForge-Installer/cloudforge-aarch64
+CloudForge-Installer.tar.gz
+# Ein "go build" ohne -o legt das Programm direkt neben den Quelltext.
+cloudforge/cloudforge
+cloudforge-linux
+*.exe
+# Mit "go test -c" gebaute Testprogramme für den Linux-Server.
+*.test
+
+# Lokale Sicherungskopien vor Änderungen.
+_backup/
+_backup_*/
