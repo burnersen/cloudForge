@@ -91,6 +91,15 @@ dann zum Beispiel
 Daten/output/Film.h264.mkv  (die Endung nennt das alte Format), und das
 Original wandert wie sonst nach "originals".
 
+Den Namen des Ergebnisses räumt CloudForge dabei auf, genau wie NVENCForge
+(seit 0.14.0): Leer- und Sonderzeichen werden zu Punkten, doppelte Punkte
+verschwinden, Angaben wie 720p oder 1080p stehen am Ende. Aus
+
+    Mein Film (2020) [1080p].mp4    wird    Mein.Film.2020.1080p.av1.mkv
+
+Das Original behält seinen Namen. Ergebnisse, die schon vorher unter dem
+alten Namen in "output" lagen, erkennt CloudForge weiter als erledigt.
+
 
 ===============================================================================
 TEIL 2 - WICHTIG ZU WISSEN

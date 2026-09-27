@@ -80,6 +80,8 @@ Daten/
 
 Nur umgepackte Dateien heißen nach ihrem alten Format, zum Beispiel `Film.h264.mkv`.
 
+Der Name des Ergebnisses wird dabei aufgeräumt wie in NVENCForge: Leer- und Sonderzeichen werden zu Punkten, Angaben wie `720p` stehen am Ende. Aus `Mein Film (2020) [1080p].mp4` wird `Mein.Film.2020.1080p.av1.mkv`. Das Original behält seinen Namen.
+
 ## 📋 Voraussetzungen
 
 - **Linux** auf x86_64 (normale PCs und Server) oder aarch64 (ARM). Die ARM-Fassung wird mitgebaut, ist aber noch nicht auf echter ARM-Hardware erprobt.

@@ -194,22 +194,34 @@ func eigenerOrdner(name string, e Einstellungen) bool {
 		strings.EqualFold(name, e.OriginalOrdnerName)
 }
 
+// rohName ist der Dateiname der Quelle ohne Endung, so wie er ist.
+func rohName(quellPfad string) string {
+	name := filepath.Base(quellPfad)
+	return strings.TrimSuffix(name, filepath.Ext(name))
+}
+
+// ergebnisName ist der Name des Ergebnisses ohne Kennung und Endung: seit
+// 0.14.0 der bereinigte Name der Quelle (namen.go), der alte nur dann, wenn
+// vom bereinigten nichts übrig bliebe.
+func ergebnisName(quellPfad string) string {
+	if bereinigt := namenBereinigen(rohName(quellPfad)); bereinigt != "" {
+		return bereinigt
+	}
+	return rohName(quellPfad)
+}
+
 // ZielPfadFuer liefert den Ort des Ergebnisses: ein Unterordner neben der
 // Quelldatei, so wie beim Windows-Pendant.
 func ZielPfadFuer(quellPfad string, e Einstellungen) string {
-	verzeichnis := filepath.Dir(quellPfad)
-	name := filepath.Base(quellPfad)
-	ohneEndung := strings.TrimSuffix(name, filepath.Ext(name))
-	return filepath.Join(verzeichnis, e.AusgabeOrdnerName, ohneEndung+zielSuffix+zielEndung)
+	return filepath.Join(filepath.Dir(quellPfad), e.AusgabeOrdnerName,
+		ergebnisName(quellPfad)+zielSuffix+zielEndung)
 }
 
 // UmpackPfadFuer liefert den Ort eines umgepackten Ergebnisses:
 // "film.mp4" mit H.264 wird zu "output/film.h264.mkv".
 func UmpackPfadFuer(quellPfad, videoCodec string, e Einstellungen) string {
-	verzeichnis := filepath.Dir(quellPfad)
-	name := filepath.Base(quellPfad)
-	ohneEndung := strings.TrimSuffix(name, filepath.Ext(name))
-	return filepath.Join(verzeichnis, e.AusgabeOrdnerName, ohneEndung+umpackSuffix(videoCodec)+zielEndung)
+	return filepath.Join(filepath.Dir(quellPfad), e.AusgabeOrdnerName,
+		ergebnisName(quellPfad)+umpackSuffix(videoCodec)+zielEndung)
 }
 
 // VorhandenesErgebnis liefert den Pfad eines Ergebnisses, das für diese
@@ -220,14 +232,23 @@ func UmpackPfadFuer(quellPfad, videoCodec string, e Einstellungen) string {
 // ist (Nutzerwunsch 26.09.2026: kein "Logbuch", die Ordner entscheiden — wie
 // in NVENCForge). Wer eine Datei nochmal umwandeln will, benennt ihr Ergebnis
 // um oder löscht es.
+//
+// Gesucht wird unter dem bereinigten Namen und — für Ergebnisse von vor
+// 0.14.0 — unter dem alten. Ergeben zwei Quellen denselben bereinigten
+// Namen, gilt die zweite deshalb als erledigt und bleibt unangetastet liegen
+// (Nutzerentscheidung 27.09.2026): lieber das, als ein Ergebnis überschreiben.
 func VorhandenesErgebnis(quellPfad string, e Einstellungen) string {
-	verzeichnis := filepath.Dir(quellPfad)
-	name := filepath.Base(quellPfad)
-	ohneEndung := strings.TrimSuffix(name, filepath.Ext(name))
-	for _, suffix := range ergebnisSuffixe {
-		kandidat := filepath.Join(verzeichnis, e.AusgabeOrdnerName, ohneEndung+suffix+zielEndung)
-		if _, err := os.Stat(kandidat); err == nil {
-			return kandidat
+	namen := []string{ergebnisName(quellPfad)}
+	if roh := rohName(quellPfad); roh != namen[0] {
+		namen = append(namen, roh)
+	}
+	ausgabe := filepath.Join(filepath.Dir(quellPfad), e.AusgabeOrdnerName)
+	for _, name := range namen {
+		for _, suffix := range ergebnisSuffixe {
+			kandidat := filepath.Join(ausgabe, name+suffix+zielEndung)
+			if _, err := os.Stat(kandidat); err == nil {
+				return kandidat
+			}
 		}
 	}
 	return ""
