@@ -1,3 +1,7 @@
+// CloudForge (https://github.com/burnersen/cloudForge)
+// Copyright (C) 2026 burnersen
+// SPDX-License-Identifier: GPL-3.0-only
+
 package main
 
 // Was ist erledigt, und was hat es gebracht? Seit 0.11.0 so, wie der Nutzer es

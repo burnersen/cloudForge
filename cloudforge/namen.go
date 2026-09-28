@@ -1,3 +1,7 @@
+// CloudForge (https://github.com/burnersen/cloudForge)
+// Copyright (C) 2026 burnersen
+// SPDX-License-Identifier: GPL-3.0-only
+
 package main
 
 // Ergebnisnamen bereinigen (seit 0.14.0, Nutzerwunsch: wie NVENCForge). Aus

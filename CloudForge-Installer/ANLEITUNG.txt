@@ -31,7 +31,7 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.14.0                                   Datei 2 von 3
+       CloudForge 0.15.0                                   Datei 2 von 3
        -----------------------------------------------------------------
        OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 97,3  in 42 Min
 
@@ -194,12 +194,13 @@ TEIL 4 - AUF EINEM NEUEN RECHNER EINRICHTEN
 
 Das Einrichtungspaket liegt in deiner pCloud im Ordner "cloudforge"
 (ganz oben, direkt im Hauptordner) und - immer in der neuesten Fassung -
-auf GitHub (Weg C). Darin liegen vier Dateien:
+auf GitHub (Weg C). Darin liegen diese Dateien:
 
     installieren.sh        das Einrichtungs-Skript
     cloudforge-x86_64      das Programm für normale PCs und Server
     cloudforge-aarch64     das Programm für ARM-Rechner
     ANLEITUNG.txt          diese Anleitung
+    LICENSE                die Lizenz (GPLv3, siehe Teil 8)
 
 WEG A - der neue Rechner hat schon pCloud Drive (am einfachsten):
 
@@ -322,14 +323,14 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         loeschen     = Original wird gelöscht (spart sofort Platz)
         behalten     = Original bleibt, wo es ist
 
-    zielVMAF=96
+    zielVMAF=95
         Die Bildqualität. CloudForge sucht für jeden Film die kleinste Datei,
         die diesen Wert mindestens erreicht. Gemessen an einer 1080p-Szene:
             93   = sichtbar weicher, Klötzchen, Streifen  (etwa 1/5 der Größe)
             96   = gut                                     (etwa 1/4)
             97,5 = sehr gut                                (etwa 1/3)
             98   = kaum vom Original zu unterscheiden     (etwa 1/2)
-        Ab Werk 96 als Kompromiss aus Qualität und Ersparnis (vorher 97).
+        Ab Werk 95 (seit 0.15.0, vorher 96) - im Dauerbetrieb erprobt.
         Filme mit 50 Bildern/s erreichen 98 meist gar nicht - dort bleibt
         CloudForge knapp unter dem besten Wert.
         Kleinere Videos (z. B. 720p) misst CloudForge seit 0.12.0 so, wie
@@ -440,5 +441,24 @@ Falls "cloudforge" allein nicht gefunden wird (direkt nach der Einrichtung,
 vor dem nächsten Anmelden), den vollen Pfad nehmen:
 
     ~/cloudforge/cloudforge -hilfe
+
+
+===============================================================================
+TEIL 8 - LIZENZ
+===============================================================================
+
+CloudForge ist freie Software unter der GNU General Public License,
+Version 3 (GPLv3). Den vollständigen Text enthält die Datei LICENSE im
+Einrichtungspaket.
+
+Jeder darf CloudForge kostenlos benutzen - privat wie beruflich -, verändern
+und weitergeben. Wer es weitergibt oder in ein eigenes Programm einbaut, muss
+den Quelltext mitliefern und dieselbe Lizenz weitergeben.
+
+CloudForge ist und bleibt kostenlos. Die offizielle Quelle ist
+
+    https://github.com/burnersen/cloudForge
+
+Wer Geld für CloudForge verlangt, verkauft dir, was es dort gratis gibt.
 
 ===============================================================================

@@ -14,12 +14,12 @@ Das Original wird erst angefasst, wenn das Ergebnis fertig, geprüft und sicher 
 [![AV1 mit SVT-AV1](https://img.shields.io/badge/AV1-SVT--AV1-6E4C9E)](#-so-arbeitet-cloudforge)
 [![Erprobt mit pCloud Drive](https://img.shields.io/badge/Cloud-pCloud%20Drive-17BED0)](#-voraussetzungen)
 [![Geschrieben in Go](https://img.shields.io/badge/Geschrieben%20in-Go-00ADD8?logo=go)](#-selbst-bauen)
-[![Lizenz](https://img.shields.io/badge/Lizenz-PolyForm%20Noncommercial-blue)](#-lizenz)
+[![Lizenz: GPLv3](https://img.shields.io/badge/Lizenz-GPLv3-blue)](#-lizenz)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Unterst%C3%BCtzen-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/burnersen)
 
 **[⬇️ Neueste Fassung herunterladen](https://github.com/burnersen/cloudForge/releases/latest)** · **[📖 Ausführliche Anleitung](CloudForge-Installer/ANLEITUNG.txt)** · **[☕ Kaffee spendieren](https://ko-fi.com/burnersen)**
 
-*Frei für private und nicht-kommerzielle Nutzung – [Quelltext offen einsehbar](#-lizenz), nie zum Weiterverkauf.*
+*Kostenlos für alle, privat wie beruflich – freie Software unter der [GPLv3](#-lizenz), Quelltext offen.*
 
 </div>
 
@@ -63,7 +63,7 @@ Jede Datei durchläuft fünf Schritte:
 | Schritt | Was passiert |
 |---|---|
 | **1. Datei holen** | Kopie aus dem Cloud-Ordner auf die lokale Platte. Auf dem Cloud-Ordner selbst wird nie gerechnet. Kommt dabei 10 Minuten lang kein einziges Byte an (Cloud hängt), gibt CloudForge diese Datei auf und macht mit der nächsten weiter, statt ewig zu warten. |
-| **2. Qualität messen** | Kurze Stücke an 5 Stellen des Films werden probeweise umgewandelt und per **VMAF** (ein Maß für die Bildqualität, 100 = wie das Original) verglichen. Gewählt wird der höchste **CRF** (Kompressionsstufe), der das Ziel mindestens hält – ab Werk VMAF 96. Danach steht auch fest, wie groß das Ergebnis etwa wird; spart es zu wenig, wird die Datei nur umgepackt. Liegt die Vorhersage knapp an der Schwelle, prüft eine Größenprobe an 10 Stellen über den ganzen Film nach, bevor umgewandelt wird. |
+| **2. Qualität messen** | Kurze Stücke an 5 Stellen des Films werden probeweise umgewandelt und per **VMAF** (ein Maß für die Bildqualität, 100 = wie das Original) verglichen. Gewählt wird der höchste **CRF** (Kompressionsstufe), der das Ziel mindestens hält – ab Werk VMAF 95. Danach steht auch fest, wie groß das Ergebnis etwa wird; spart es zu wenig, wird die Datei nur umgepackt. Liegt die Vorhersage knapp an der Schwelle, prüft eine Größenprobe an 10 Stellen über den ganzen Film nach, bevor umgewandelt wird. |
 | **3. Umwandeln** | SVT-AV1, ab Werk preset 9 und 10 Bit (gegen Streifen in Farbverläufen). Ton, Untertitel, Kapitel und Anhänge (etwa Schriften) werden 1:1 übernommen. Einzige Ausnahme: MP4-Textuntertitel kann MKV nicht aufnehmen, sie kommen als SRT an (gleicher Text, gleiche Zeiten). Ein eingebettetes Vorschaubild entfällt. |
 | **4. Prüfen** | Das Ergebnis wird gegen das Original geprüft: Größe, Spieldauer, alle Spuren. |
 | **5. Ergebnis ablegen** | Hochladen unter einem Zwischennamen – unter seinem richtigen Namen erscheint das Ergebnis erst, wenn es vollständig da ist. Erst dann wandert das Original nach `originals/`. |
@@ -143,7 +143,7 @@ Die Einstellungen stehen in `~/cloudforge/cloudforge.ini`; jeder Eintrag ist dor
 
 | Eintrag | Ab Werk | Bedeutung |
 |---|---|---|
-| `zielVMAF` | `96` | Qualitätsziel, gilt als Untergrenze. 93 = sichtbar weicher, 98 = kaum vom Original zu unterscheiden. |
+| `zielVMAF` | `95` | Qualitätsziel, gilt als Untergrenze. 93 = sichtbar weicher, 98 = kaum vom Original zu unterscheiden. |
 | `originalBehandlung` | `verschieben` | `verschieben` (nach `originals/`), `loeschen` oder `behalten` |
 | `mindestErsparnisProzent` | `15` | Wird eine Datei nicht mindestens so viel kleiner, wird sie nur verlustfrei umgepackt. |
 | `kostenDeckelProzent` | `0` (aus) | Deckel wie bei NVENCForge: das neue Bild darf höchstens so viel Prozent des alten kosten – notfalls unter dem Qualitätsziel. |
@@ -214,8 +214,12 @@ Die Kommentare im Quelltext sind deutsch und erklären vor allem das *Warum* –
 
 ## 📜 Lizenz
 
-CloudForge ist quelloffen einsehbar unter der [PolyForm Noncommercial License 1.0.0](LICENSE.md).
-Frei zum Benutzen, Studieren, Verändern und Weitergeben für jeden **nicht-kommerziellen** Zweck: privat, Hobby, Bildung, Forschung. **Kommerzielle Nutzung, Weiterverkauf oder das Einbauen in bezahlte Produkte sind nicht erlaubt** – außer mit einer eigenen Lizenz vom Autor. Interesse an einer kommerziellen Lizenz? Einfach ein Issue eröffnen.
+CloudForge ist freie Software unter der [GNU General Public License, Version 3](LICENSE) – nur dieser Version (`GPL-3.0-only`).
+
+- **Benutzen:** Jeder darf CloudForge kostenlos benutzen, privat wie beruflich, den Quelltext lesen, verändern und weitergeben.
+- **Die eine Bedingung:** Wer CloudForge oder Teile davon weitergibt – unverändert, verändert oder eingebaut in ein eigenes Programm –, muss den vollständigen Quelltext mitliefern und alles unter derselben Lizenz weitergeben. Ein geschlossenes Kaufprodukt mit CloudForge darin geht damit nicht.
+- **Kostenlos:** CloudForge ist und bleibt kostenlos. Die offizielle Quelle ist [github.com/burnersen/cloudForge](https://github.com/burnersen/cloudForge) – wer Geld für CloudForge verlangt, verkauft dir, was es hier gratis gibt.
+- **Eigene Lizenz für Firmen:** Wer CloudForge in ein Produkt einbauen möchte, das nicht unter der GPLv3 stehen soll, kann beim Autor eine eigene Lizenz anfragen – einfach ein [Issue eröffnen](https://github.com/burnersen/cloudForge/issues).
 
 **Worauf CloudForge aufbaut:** Umgewandelt wird mit [FFmpeg](https://ffmpeg.org/) (GPL) samt SVT-AV1 und libvmaf. FFmpeg ist nicht Teil dieses Repos – das Einrichtungs-Skript lädt die fertigen Builds von [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds). Diese stehen unter ihren eigenen Lizenzen; die Lizenz oben gilt für den Code in diesem Repository.
 

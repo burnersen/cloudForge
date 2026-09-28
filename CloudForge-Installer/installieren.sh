@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# CloudForge (https://github.com/burnersen/cloudForge)
+# Copyright (C) 2026 burnersen
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # CloudForge einrichten
 #
@@ -60,7 +63,7 @@ case "$(uname -m)" in
 esac
 
 [ -f "$QUELLE/$PROGRAMM" ] || fehler "Die Datei $PROGRAMM fehlt neben diesem Skript." \
-    "Bitte den GANZEN Ordner mit allen vier Dateien kopieren, nicht nur das Skript."
+    "Bitte den GANZEN Ordner mit allen Dateien kopieren, nicht nur das Skript."
 
 # ---------------------------------------------------------------------------
 

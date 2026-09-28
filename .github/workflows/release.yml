@@ -2,9 +2,9 @@
 # beiden Linux-Programme, schnürt daraus das Einrichtungspaket und
 # veröffentlicht es als Anhang des Releases.
 #
-# Das Paket CloudForge-Installer.tar.gz enthält dieselben vier Dateien wie das
-# Paket in der pCloud: installieren.sh, ANLEITUNG.txt, cloudforge-x86_64 und
-# cloudforge-aarch64. Sein Name bleibt bei jeder Fassung gleich, damit
+# Das Paket CloudForge-Installer.tar.gz enthält fünf Dateien: installieren.sh,
+# ANLEITUNG.txt, LICENSE (die GPLv3 aus dem Hauptordner), cloudforge-x86_64
+# und cloudforge-aarch64. Sein Name bleibt bei jeder Fassung gleich, damit
 # .../releases/latest/download/CloudForge-Installer.tar.gz immer auf die
 # neueste zeigt (Weg C in der Anleitung).
 name: Release
@@ -82,13 +82,18 @@ jobs:
       # Wer ./installieren.sh tippt, soll kein "Keine Berechtigung" sehen.
       # tar speichert die Rechte mit; Besitzer 0, damit im Paket nicht der
       # Benutzer des Runners steht.
+      # Der Lizenztext gehört zum Programm: Wer das Paket weitergibt, muss die
+      # GPLv3 mitgeben - liegt sie schon drin, passiert das von selbst. Im Repo
+      # steht sie nur einmal, im Hauptordner.
       - name: Paket schnüren
         run: |
+          cp LICENSE CloudForge-Installer/LICENSE
           chmod 755 CloudForge-Installer/installieren.sh CloudForge-Installer/cloudforge-x86_64 CloudForge-Installer/cloudforge-aarch64
-          chmod 644 CloudForge-Installer/ANLEITUNG.txt
+          chmod 644 CloudForge-Installer/ANLEITUNG.txt CloudForge-Installer/LICENSE
           tar --owner=0 --group=0 --numeric-owner -czf CloudForge-Installer.tar.gz \
             CloudForge-Installer/installieren.sh \
             CloudForge-Installer/ANLEITUNG.txt \
+            CloudForge-Installer/LICENSE \
             CloudForge-Installer/cloudforge-x86_64 \
             CloudForge-Installer/cloudforge-aarch64
           tar -tvzf CloudForge-Installer.tar.gz

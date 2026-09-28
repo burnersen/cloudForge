@@ -1,3 +1,7 @@
+// CloudForge (https://github.com/burnersen/cloudForge)
+// Copyright (C) 2026 burnersen
+// SPDX-License-Identifier: GPL-3.0-only
+
 package main
 
 // CloudForge — wandelt Videos aus einem Cloud-Ordner nach AV1 um.
@@ -27,7 +31,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.14.0"
+const appVersion = "0.15.0"
 
 func main() {
 	err := starten()

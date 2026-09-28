@@ -1,3 +1,7 @@
+// CloudForge (https://github.com/burnersen/cloudForge)
+// Copyright (C) 2026 burnersen
+// SPDX-License-Identifier: GPL-3.0-only
+
 package main
 
 // Einstellungen aus der INI-Datei. Aufbau bewusst wie beim NVENCForge:
@@ -78,12 +82,14 @@ type Einstellungen struct {
 // standardWerte liefert die Voreinstellung — seit 0.7.1 genau die Werte, die
 // der Nutzer auf dem netcup-Server gewählt hat, damit eine Neuinstallation
 // gleich so arbeitet wie sein eingerichteter Server:
-//   - Ziel 96 als Untergrenze (seit 0.11.3, Nutzerwahl 27.09.2026 als
-//     Kompromiss aus Qualität und Ersparnis). Der Weg dahin: 98 am 25.09. an
-//     Vergleichsclips gewählt, 97 ab 0.10.0 als Mittelweg, in der Nacht zum
-//     27.09. probeweise 95; gedeckelte Clips mit 93 waren ihm zu schlecht.
-//   - Anker 16/26: der niedrige ist die beste Qualität, die Auto-CQ je
-//     anbietet, der hohe liegt bei vielen Filmen knapp über oder unter 96.
+//   - Ziel 95 als Untergrenze (seit 0.15.0, Nutzerwahl 28.09.2026 nach einem
+//     Dauerlauf mit 95, der ihn überzeugt hat). Der Weg dahin: 98 am 25.09. an
+//     Vergleichsclips gewählt, 97 ab 0.10.0 als Mittelweg, 96 ab 0.11.3;
+//     gedeckelte Clips mit 93 waren ihm zu schlecht.
+//   - Anker 22/32 (seit 0.15.0, vorher 16/26 für Ziel 96 bis 98): Einer soll
+//     über, einer unter dem Ziel landen. Mit 16/26 lagen bei Ziel 95 meist
+//     beide darüber — der hohe lag bei vielen Filmen um 96. Der niedrige ist
+//     zugleich die beste Qualität, die Auto-CQ je anbietet.
 //   - 5 Messfenster (seit 0.11.3): Mit 3 lag der hochgerechnete Anteil am
 //     27.09.2026 bis 10 Prozentpunkte neben dem ganzen Film (bei einem: 42
 //     statt 31 %), obwohl die Proben an den Messstellen genau stimmten — die
@@ -114,9 +120,9 @@ func standardWerte() Einstellungen {
 		Bittiefe:      10,
 		VarianceBoost: false,
 		Tune0:         false,
-		ZielVMAF:      96,
-		AnkerNiedrig:  16,
-		AnkerHoch:     26,
+		ZielVMAF:      95,
+		AnkerNiedrig:  22,
+		AnkerHoch:     32,
 		CRFMin:        14,
 		CRFMax:        44,
 
@@ -181,7 +187,7 @@ func iniAufbau() []iniZeile {
 		{"zielVMAF", func(e Einstellungen) string { return zahl(e.ZielVMAF) },
 			"Qualitaetsziel. Auto-CQ haelt es als UNTERGRENZE: das Ergebnis liegt nicht\n# darunter, solange das Material es ueberhaupt hergibt. Anhaltspunkte,\n# gemessen 25.09.2026 an einer 1080p-Szene mit preset 9 und 10 Bit\n# (Original 12,3 Mbit/s):\n#   VMAF 93   = CRF 33, 2,2 Mbit/s - sichtbar weicher, Kloetzchen, Streifen\n#   VMAF 96   = CRF 28, 3,2 Mbit/s\n#   VMAF 97,5 = CRF 24, 4,2 Mbit/s\n#   VMAF 98   = CRF 20, 5,2 Mbit/s - kaum vom Original zu unterscheiden\n# 1080p-Filme mit 50 Bildern/s erreichen 98 meist gar nicht (26.09.2026:\n# nur 3 von 23 Filmen) - dort greift plateauToleranz.\n# Wer das Ziel aendert, legt die Anker so, dass der bessere darueber landet."},
 		{"ankerNiedrig", func(e Einstellungen) string { return strconv.Itoa(e.AnkerNiedrig) },
-			"Die zwei CRF-Werte, die Auto-CQ zuerst misst, um die Kurve zu schaetzen.\n# Der niedrige sollte ueber dem Ziel landen, der hohe darunter: fuer\n# Ziel 94 etwa 22 und 32, fuer Ziel 96 bis 98 etwa 16 und 26. Der niedrige\n# ist zugleich die beste Qualitaet, die Auto-CQ je anbietet."},
+			"Die zwei CRF-Werte, die Auto-CQ zuerst misst, um die Kurve zu schaetzen.\n# Der niedrige sollte ueber dem Ziel landen, der hohe darunter: fuer\n# Ziel 94 bis 95 etwa 22 und 32 (ab Werk), fuer Ziel 96 bis 98 etwa 16\n# und 26. Der niedrige ist zugleich die beste Qualitaet, die Auto-CQ je\n# anbietet."},
 		{"ankerHoch", func(e Einstellungen) string { return strconv.Itoa(e.AnkerHoch) }, ""},
 		{"crfMin", func(e Einstellungen) string { return strconv.Itoa(e.CRFMin) },
 			"Klemme: Auto-CQ verlaesst diesen Bereich nie."},

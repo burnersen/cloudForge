@@ -1,3 +1,7 @@
+// CloudForge (https://github.com/burnersen/cloudForge)
+// Copyright (C) 2026 burnersen
+// SPDX-License-Identifier: GPL-3.0-only
+
 package main
 
 import (
@@ -46,10 +50,12 @@ var duenneQuelle = quellKurve(
 	1.18, 0.935)
 
 func deckelSuche(probe probeMessung, deckel float64) *crfSuche {
-	e := standardWerte() // Anker 16/26
-	// Fest, nicht der Werkswert: die Erwartungen unten sind für Ziel 97 gerechnet
-	// (mit dem Werkswert 96 seit 0.11.3 fiel TestDeckelAusOderQuelleUnbekannt).
+	e := standardWerte()
+	// Fest, nicht die Werkswerte: die Erwartungen unten sind für Ziel 97 und
+	// Anker 16/26 gerechnet (mit dem Werkswert 96 seit 0.11.3 fiel
+	// TestDeckelAusOderQuelleUnbekannt; seit 0.15.0 sind die Werksanker 22/32).
 	e.ZielVMAF = 97
+	e.AnkerNiedrig, e.AnkerHoch = 16, 26
 	e.KostenDeckelProzent = deckel
 	return &crfSuche{ctx: context.Background(), e: e, probe: probe, quelleBytes: quelleTestBytes}
 }

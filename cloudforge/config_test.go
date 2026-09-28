@@ -1,3 +1,7 @@
+// CloudForge (https://github.com/burnersen/cloudForge)
+// Copyright (C) 2026 burnersen
+// SPDX-License-Identifier: GPL-3.0-only
+
 package main
 
 import (
@@ -10,11 +14,12 @@ import (
 )
 
 // Die Werkswerte sind seit 0.7.1 die Wahl des Nutzers — eine Neuinstallation
-// soll genau so arbeiten wie sein eingerichteter Server. Ziel 96 seit 0.11.3
-// (Frage-Runde 27.09.2026), die beiden SVT-Schalter testet er selbst.
+// soll genau so arbeiten wie sein eingerichteter Server. Ziel 95 mit Ankern
+// 22/32 seit 0.15.0 (Nutzerwahl 28.09.2026), die beiden SVT-Schalter testet
+// er selbst.
 func TestWerkswerteSindDieDesNutzers(t *testing.T) {
 	e := standardWerte()
-	if e.Preset != 9 || e.Bittiefe != 10 || e.ZielVMAF != 96 || e.AnkerNiedrig != 16 || e.AnkerHoch != 26 {
+	if e.Preset != 9 || e.Bittiefe != 10 || e.ZielVMAF != 95 || e.AnkerNiedrig != 22 || e.AnkerHoch != 32 {
 		t.Errorf("Werkswerte weichen ab: preset %d, bittiefe %d, zielVMAF %v, Anker %d/%d",
 			e.Preset, e.Bittiefe, e.ZielVMAF, e.AnkerNiedrig, e.AnkerHoch)
 	}
