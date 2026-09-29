@@ -58,6 +58,32 @@ func TestGroessenprobeFensterGleichmaessigUeberDenGanzenFilm(t *testing.T) {
 	}
 }
 
+// Die Stücke dürfen sich nie überlappen, sonst zählt das Ergebnis doppelt.
+func TestGroessenprobeAnzahlOhneUeberlappung(t *testing.T) {
+	faelle := []struct {
+		dauer, laenge float64
+		anzahl        int
+	}{
+		{2825, 8, groessenprobeStellen}, // Film vom 29.09.2026: alle Stellen
+		{160, 8, 20},                    // passt genau
+		{100, 8, 12},                    // kurzer Film: weniger Stücke
+		{5, 8, 1},                       // kürzer als ein Stück: eines
+		{0, 8, 1},                       // unbekannt: GroessenProbe meldet dann den Fehler
+	}
+	for _, f := range faelle {
+		anzahl := groessenprobeAnzahl(f.dauer, f.laenge)
+		if anzahl != f.anzahl {
+			t.Errorf("%.0f s Film, %.0f s Stücke: %d Stücke, erwartet %d", f.dauer, f.laenge, anzahl, f.anzahl)
+		}
+		fenster := groessenprobeFenster(f.dauer, f.laenge, anzahl)
+		for i := 1; i < len(fenster); i++ {
+			if fenster[i].StartSek < fenster[i-1].StartSek+fenster[i-1].LaengeSek-1e-9 {
+				t.Errorf("%.0f s Film: Stück %d überlappt das vorige", f.dauer, i)
+			}
+		}
+	}
+}
+
 // Die Probe zeigt nur einen schlichten Balken: Bildnummer, Position und
 // Grösse der Probestücke hätten neben dem ganzen Film keine Bedeutung.
 func TestNurBalkenGibtNurZeitenWeiter(t *testing.T) {

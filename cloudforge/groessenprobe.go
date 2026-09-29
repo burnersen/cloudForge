@@ -23,10 +23,14 @@ import (
 )
 
 const (
-	// groessenprobeStellen: so viele Stücke kodiert die Grössenprobe. 10 statt
-	// der gemessenen 19 (Nutzerwahl 27.09.2026) — am Film mit dem grössten Fehler trafen 10
-	// der 19 Stellen (jede zweite) die ganze Datei auf 2 Punkte.
-	groessenprobeStellen = 10
+	// groessenprobeStellen: so viele Stücke kodiert die Grössenprobe. Bis
+	// 0.15.0 waren es 10 — dann lag sie bei einem Film, der zum Ende hin
+	// deutlich schwerer wurde, 6 Punkte zu günstig: 10 Minuten umgewandelt,
+	// danach doch umgepackt. Nachgemessen am 29.09.2026 an genau diesem Film
+	// (Bild, echt 85,7 % der Quelle): 10 × 8 s 80,0 %, 20 × 8 s 86,8 %,
+	// 10 × 16 s 80,0 %. Mehr Stellen helfen, längere Stücke nicht. Kostet je
+	// knapper Datei etwa 25 Sekunden mehr (Nutzerwahl 29.09.2026).
+	groessenprobeStellen = 20
 
 	// grenzbereichPunkte: so nah muss die erste Vorhersage an der Schwelle
 	// mindestProzent liegen, damit die Grössenprobe läuft. Der grösste
@@ -39,6 +43,19 @@ const (
 // dass sie danebenliegen und die Entscheidung kippen könnte.
 func imGrenzbereich(erwartetProzent, schwelleProzent float64) bool {
 	return math.Abs(erwartetProzent-schwelleProzent) <= grenzbereichPunkte
+}
+
+// groessenprobeAnzahl sagt, wie viele Stücke in den Film passen, ohne sich
+// zu überlappen: Doppelt kodierte Stellen würden beim Ergebnis doppelt, bei
+// der Quelle aber nur einmal zählen, und die Probe hielte den Film für teurer.
+// Erst sehr kurze Filme (ab Werk unter 20 × 8 s) bekommen weniger Stücke,
+// mindestens eines.
+func groessenprobeAnzahl(dauerSek, laengeSek float64) int {
+	if laengeSek <= 0 {
+		return groessenprobeStellen
+	}
+	passen := int(dauerSek / laengeSek)
+	return max(1, min(groessenprobeStellen, passen))
 }
 
 // groessenprobeFenster verteilt anzahl Stücke gleichmässig über den GANZEN
@@ -62,7 +79,7 @@ func groessenprobeFenster(dauerSek, laengeSek float64, anzahl int) []Fenster {
 // Einstellungen der echten Umwandlung — ohne Qualitätsmessung, die steht ja
 // schon fest — und liefert, welchen Anteil der Quelle das Bild dort kostet.
 func GroessenProbe(ctx context.Context, quelle string, dauerSek float64, crf int, arbeitsOrdner string, e Einstellungen, melde Rueckmeldung) (float64, error) {
-	fenster := groessenprobeFenster(dauerSek, e.MessfensterSek, groessenprobeStellen)
+	fenster := groessenprobeFenster(dauerSek, e.MessfensterSek, groessenprobeAnzahl(dauerSek, e.MessfensterSek))
 	if len(fenster) == 0 {
 		return 0, fmt.Errorf("Spieldauer unbekannt - keine Groessenprobe moeglich")
 	}
@@ -132,6 +149,6 @@ func ersparnisVorhersagen(ctx context.Context, anz *Anzeige, schritt, gesamt int
 
 	genauer, ok := erwarteteErsparnisProzent(info, anteil)
 	anz.SchrittFertig(fmt.Sprintf("an %d Stellen ~%.0f %% der Quelle (erste Schaetzung ~%.0f %%)",
-		groessenprobeStellen, anteil*100, autoCQ.AnteilQuelle*100))
+		groessenprobeAnzahl(info.DauerSek, e.MessfensterSek), anteil*100, autoCQ.AnteilQuelle*100))
 	return genauer, ok, nil
 }

@@ -318,7 +318,11 @@ func TestLohntNichtText(t *testing.T) {
 	if text := lohntNichtText(-18, 30); !strings.Contains(text, "18% GROESSER") {
 		t.Errorf("Vergroesserung muss deutlich gesagt werden: %q", text)
 	}
-	if text := lohntNichtText(12, 30); !strings.Contains(text, "nur 12% kleiner") || !strings.Contains(text, "30%") {
+	if text := lohntNichtText(12, 30); !strings.Contains(text, "nur 12,0% kleiner") || !strings.Contains(text, "30%") {
 		t.Errorf("unerwarteter Text: %q", text)
+	}
+	// Knapp unter der Schwelle darf nicht wie die Schwelle selbst aussehen.
+	if text := lohntNichtText(14.6, 15); !strings.Contains(text, "nur 14,6% kleiner") {
+		t.Errorf("Nachkommastelle fehlt: %q", text)
 	}
 }

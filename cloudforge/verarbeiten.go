@@ -69,8 +69,10 @@ func lohntNichtText(erwartetProzent, verlangtProzent float64) string {
 		return fmt.Sprintf("wuerde voraussichtlich %.0f%% GROESSER (Quelle schon stark komprimiert)",
 			-erwartetProzent)
 	}
-	return fmt.Sprintf("voraussichtlich nur %.0f%% kleiner, verlangt sind %.0f%% (Quelle schon stark komprimiert)",
-		erwartetProzent, verlangtProzent)
+	// Eine Nachkommastelle: Gerundet stand am 29.09.2026 "nur 15% kleiner,
+	// verlangt sind 15%" da, obwohl es knapp darunter war.
+	return fmt.Sprintf("voraussichtlich nur %s%% kleiner, verlangt sind %.0f%% (Quelle schon stark komprimiert)",
+		komma(erwartetProzent, 1), verlangtProzent)
 }
 
 // umpackBytesProSek schätzt, wie schnell eine Datei durchläuft, die nur
