@@ -31,7 +31,7 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.16.0                                   Datei 2 von 3
+       CloudForge 0.17.0                                   Datei 2 von 3
        -----------------------------------------------------------------
        OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 97,3  in 42 Min
 
@@ -380,6 +380,21 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         10 = beugt Streifen in Farbverläufen (Banding) vor. Kostet auf dem
              netcup-Server nur etwa 20 % Tempo, die Datei wird nicht größer.
         8  = etwas schneller, aber anfälliger für Streifen.
+
+    maxAufloesung=0
+        Höchste Auflösung des Ergebnisses (seit 0.17.0, wie maxResolution
+        in NVENCForge). Größeres Material wird verkleinert, das
+        Seitenverhältnis bleibt, vergrößert wird nie, nachgeschärft auch
+        nicht. 1080 = höchstens 1920 x 1080 (hochkant 1080 x 1920) - aus
+        einem 4K-Film wird so ein 1080p-Film, der viel schneller umgewandelt
+        ist und deutlich weniger Platz braucht. Die Qualitätsmessung prüft
+        dann die verkleinerte Fassung.
+        Erlaubt: 0 (aus - Auflösung wie die Quelle), 720, 1080, 1440, 2160.
+        Ab Werk 0. Achtung: Mit originalBehandlung=loeschen ist die höhere
+        Auflösung danach endgültig weg. Was nur umgepackt wird, behält
+        seine Auflösung.
+        Farbangaben der Quelle (auch HDR: PQ oder HLG, BT.2020) gehen
+        unverändert ins Ergebnis - es wird nichts dazuerfunden.
 
     varianceBoost=nein
         ja = SVT-AV1 gibt ruhigen, glatten und dunklen Flächen (Wände, Haut,

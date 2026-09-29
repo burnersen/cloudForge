@@ -132,7 +132,7 @@ func CRFFinden(ctx context.Context, quelle string, info VideoInfo, arbeitsOrdner
 	referenz := filepath.Join(arbeitsOrdner, "messreferenz.mkv")
 	defer os.Remove(referenz)
 
-	if err := ProbeSchneiden(ctx, quelle, referenz, fenster, e); err != nil {
+	if err := ProbeSchneiden(ctx, quelle, referenz, fenster, verkleinernFilter(info, e), e); err != nil {
 		return AutoCQErgebnis{}, err
 	}
 
@@ -144,11 +144,12 @@ func CRFFinden(ctx context.Context, quelle string, info VideoInfo, arbeitsOrdner
 		return AutoCQErgebnis{}, err
 	}
 
+	breite, hoehe, _ := ergebnisMasseFuer(info, e)
 	sucher := &crfSuche{
 		ctx:         ctx,
 		e:           e,
 		bericht:     bericht,
-		probe:       echteProbe(ctx, referenz, arbeitsOrdner, info.Breite, info.Hoehe, e),
+		probe:       echteProbe(ctx, referenz, arbeitsOrdner, breite, hoehe, e),
 		quelleBytes: quelleBytes,
 	}
 	ergebnis, err := sucher.bestimmen()
@@ -176,7 +177,8 @@ func (s *crfSuche) bestimmen() (AutoCQErgebnis, error) {
 type probeMessung func(crf int) (vmaf float64, bytes int64, err error)
 
 // echteProbe misst mit ffmpeg an der Vergleichsdatei. breite und hoehe sind
-// die Masse der Quelle — danach richtet sich, ob für die Messung vergrössert wird.
+// die Masse des Ergebnisses (nach maxAufloesung) — danach richtet sich, ob für
+// die Messung vergrössert wird.
 func echteProbe(ctx context.Context, referenz, ordner string, breite, hoehe int, e Einstellungen) probeMessung {
 	return func(crf int) (float64, int64, error) {
 		probe := filepath.Join(ordner, fmt.Sprintf("probe_crf%d.mkv", crf))

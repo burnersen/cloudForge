@@ -53,6 +53,7 @@ type Einstellungen struct {
 	Preset        int
 	Kerne         int
 	Bittiefe      int  // 8 oder 10
+	MaxAufloesung int  // kurze Kante des Ergebnisses höchstens (bildformat.go), 0 = wie die Quelle
 	VarianceBoost bool // SVT-AV1: ruhigen, dunklen Flächen mehr Bits geben
 	Tune0         bool // SVT-AV1 tune 0 (Seheindruck) statt tune 1 (PSNR)
 	ZielVMAF      float64
@@ -118,6 +119,7 @@ func standardWerte() Einstellungen {
 		Preset:        9,
 		Kerne:         6,
 		Bittiefe:      10,
+		MaxAufloesung: 0, // aus: niemandem ungefragt die Auflösung nehmen, mit "loeschen" wäre sie weg
 		VarianceBoost: false,
 		Tune0:         false,
 		ZielVMAF:      95,
@@ -180,6 +182,8 @@ func iniAufbau() []iniZeile {
 			"Parallelitaet fuer SVT-AV1 (dessen Wert lp), keine feste Kernzahl.\n# 6 ist das Maximum - hoehere Werte kappt SVT-AV1 4.2 auf 6. Ein Film\n# belegt damit gut 6 der 8 Kerne (netcup, gemessen 25.09.2026)."},
 		{"bittiefe", func(e Einstellungen) string { return strconv.Itoa(e.Bittiefe) },
 			"Bittiefe des Ergebnisses: 8 oder 10. 10 Bit beugt Streifen in\n# Farbverlaeufen (Banding) vor - auch bei 8-Bit-Quellen. Gemessen 25.09.2026\n# auf dem netcup-Server: 10 Bit kostet etwa 20 % Tempo, die Datei wird\n# nicht groesser. (Auf dem alten Contabo-VPS waren es noch 50 % Tempo.)"},
+		{"maxAufloesung", func(e Einstellungen) string { return strconv.Itoa(e.MaxAufloesung) },
+			"Hoechste Aufloesung des Ergebnisses (kurze Kante), wie maxResolution in\n# NVENCForge: Groesseres Material wird verkleinert, das Seitenverhaeltnis\n# bleibt, vergroessert wird nie. 1080 = hoechstens 1920 x 1080 (hochkant\n# 1080 x 1920). Ohne Nachschaerfen. Erlaubt: 0 (aus, Aufloesung wie die\n# Quelle), 720, 1080, 1440, 2160. Ab Werk 0.\n# Achtung: Mit originalBehandlung=loeschen ist die hoehere Aufloesung danach\n# weg. Was nur umgepackt wird, behaelt seine Aufloesung."},
 		{"varianceBoost", func(e Einstellungen) string { return jaNein(e.VarianceBoost) },
 			"Variance Boost (SVT-AV1): gibt ruhigen, glatten und dunklen Flaechen (Waende,\n# Haut, Schatten) mehr Bits - genau dort entstehen sonst Kloetzchen und\n# Streifen. Gemessen 26.09.2026 an einem 1080p50-Film: bei gleichem CRF\n# 26 % groesser und +0,56 VMAF; beim VMAF-Ziel waehlt Auto-CQ dafuer einen\n# hoeheren CRF, die Datei wird dann kaum groesser. Ob es besser aussieht,\n# zeigt nur das Auge. ja oder nein. Mit welcher Einstellung eine Datei\n# entstand, steht im Protokoll."},
 		{"tune0", func(e Einstellungen) string { return jaNein(e.Tune0) },
@@ -364,6 +368,8 @@ func wertUebernehmen(e *Einstellungen, schluessel, wert string) error {
 		return ganzzahl(wert, 1, maxKerneHart, &e.Kerne)
 	case "bittiefe":
 		return bittiefeLesen(e, wert)
+	case "maxAufloesung":
+		return maxAufloesungLesen(e, wert)
 	case "varianceBoost":
 		e.VarianceBoost = istJa(wert)
 	case "tune0":
@@ -423,6 +429,17 @@ func bittiefeLesen(e *Einstellungen, wert string) error {
 	default:
 		return fmt.Errorf("unbekannter Wert %q (erlaubt: 8 oder 10)", wert)
 	}
+	return nil
+}
+
+// maxAufloesungLesen lässt nur die Stufen aus NVENCForge zu — ein Tippfehler
+// wie 1800 soll auffallen, statt still eine krumme Grösse zu erzeugen.
+func maxAufloesungLesen(e *Einstellungen, wert string) error {
+	zahl, err := strconv.Atoi(wert)
+	if err != nil || !erlaubteMaxAufloesungen[zahl] {
+		return fmt.Errorf("unbekannter Wert %q (erlaubt: 0 = aus, 720, 1080, 1440, 2160)", wert)
+	}
+	e.MaxAufloesung = zahl
 	return nil
 }
 

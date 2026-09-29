@@ -103,7 +103,7 @@ func TestNurBalkenGibtNurZeitenWeiter(t *testing.T) {
 }
 
 func TestFensterArgumenteHaengtAlleStueckeAneinander(t *testing.T) {
-	args := fensterArgumente("film.mp4", groessenprobeFenster(1000, 8, 10))
+	args := fensterArgumente("film.mp4", groessenprobeFenster(1000, 8, 10), "")
 	text := strings.Join(args, " ")
 	if n := strings.Count(text, "-i film.mp4"); n != 10 {
 		t.Errorf("10 Eingänge erwartet, %d gefunden", n)
@@ -180,7 +180,7 @@ func TestGroessenProbeMitEchtemFFmpeg(t *testing.T) {
 	e.FFmpegPfad, e.FFprobePfad = ffmpeg, ffprobe
 	const crf = 35
 
-	anteil, err := GroessenProbe(ctx, quelle, 100, crf, ordner, e, nil)
+	anteil, err := GroessenProbe(ctx, quelle, VideoInfo{DauerSek: 100}, crf, ordner, e, nil)
 	if err != nil {
 		t.Fatalf("Grössenprobe: %v", err)
 	}

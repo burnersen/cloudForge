@@ -48,6 +48,14 @@ type VideoInfo struct {
 	Hoehe      int
 	FPS        float64
 
+	// Farbangaben der Videospur, so wie ffprobe sie nennt (etwa "bt2020",
+	// "smpte2084", "bt2020nc", "tv"); leer, wenn die Datei keine hat.
+	// Sie gehen unverändert ans Ergebnis (farbArgumente).
+	FarbPrimaer string
+	FarbKurve   string
+	FarbMatrix  string
+	FarbBereich string
+
 	// Bitrate der Videospur. Steht sie nicht in der Datei (bei MKV häufig),
 	// wird sie aus Dateigröße und Dauer geschätzt; GeschaetzteBitrate sagt es.
 	VideoBitrateKbps   int
@@ -89,6 +97,10 @@ type probeStream struct {
 	Channels     int               `json:"channels"`
 	BitRate      string            `json:"bit_rate"`
 	AvgFrameRate string            `json:"avg_frame_rate"`
+	ColorPrim    string            `json:"color_primaries"`
+	ColorTrc     string            `json:"color_transfer"`
+	ColorSpace   string            `json:"color_space"`
+	ColorRange   string            `json:"color_range"`
 	Tags         map[string]string `json:"tags"`
 }
 
@@ -199,6 +211,8 @@ func ausProbe(dateiPfad string, roh probeAusgabe) (VideoInfo, error) {
 			info.Breite = s.Width
 			info.Hoehe = s.Height
 			info.FPS = bildrateLesen(s.AvgFrameRate)
+			info.FarbPrimaer, info.FarbKurve = s.ColorPrim, s.ColorTrc
+			info.FarbMatrix, info.FarbBereich = s.ColorSpace, s.ColorRange
 			if bps, err := strconv.Atoi(s.BitRate); err == nil && bps > 0 {
 				info.VideoBitrateKbps = bps / 1000
 			}

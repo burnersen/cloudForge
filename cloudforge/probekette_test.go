@@ -42,7 +42,7 @@ func TestProbeKetteMitEchtemFFmpeg(t *testing.T) {
 
 	fenster := FensterWaehlen(40, e.MessfensterAnzahl, e.MessfensterSek)
 	referenz := filepath.Join(ordner, "messreferenz.mkv")
-	if err := ProbeSchneiden(ctx, video, referenz, fenster, e); err != nil {
+	if err := ProbeSchneiden(ctx, video, referenz, fenster, "", e); err != nil {
 		t.Fatalf("Messausschnitte: %v", err)
 	}
 

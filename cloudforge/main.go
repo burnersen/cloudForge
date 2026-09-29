@@ -31,7 +31,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.16.0"
+const appVersion = "0.17.0"
 
 func main() {
 	err := starten()
@@ -476,8 +476,8 @@ func eineDateiAnalysieren(ctx context.Context, anz *Anzeige, nummer, gesamt int,
 	if err != nil {
 		return err
 	}
-	anz.Zeile("  %s  |  %dp mit %s Bildern/s  |  %s Film",
-		groesseText(info.GroesseBytes), info.Hoehe, komma(info.FPS, 0),
+	anz.Zeile("  %s  |  %s mit %s Bildern/s  |  %s Film",
+		groesseText(info.GroesseBytes), aufloesungText(info, e.MaxAufloesung), komma(info.FPS, 0),
 		uhrText(time.Duration(info.DauerSek)*time.Second))
 
 	// Wie im echten Lauf (KandidatPruefen): Unter 720p wird gar nicht gemessen.

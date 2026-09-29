@@ -309,7 +309,11 @@ func KandidatPruefen(pfad string, e Einstellungen) Kandidat {
 		return k
 	}
 
-	boden := BitratenBodenKbps(info.Hoehe, info.FPS)
+	// Die Untergrenze richtet sich nach der Grösse des ERGEBNISSES (seit
+	// 0.17.0, wie NVENCForge): Ein 4K-Film mit 4 Mbit/s ist für 4K schon
+	// schlank, auf 1080p verkleinert aber gut zu verkleinern.
+	_, zielHoehe, _ := ergebnisMasseFuer(info, e)
+	boden := BitratenBodenKbps(zielHoehe, info.FPS)
 	if info.VideoBitrateKbps <= boden {
 		k.Grund = SchonSchlank
 		return k

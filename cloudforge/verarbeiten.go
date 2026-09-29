@@ -143,12 +143,14 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 		geschaetzt = erfahrung.DauerFuerBytes(info.GroesseBytes)
 	}
 	vorhaben := "dauert etwa " + uhrText(geschaetzt)
+	maxAufloesung := e.MaxAufloesung
 	if kandidat.NurUmpacken() {
 		geschaetzt = time.Duration(float64(info.GroesseBytes) / umpackBytesProSek * float64(time.Second))
 		vorhaben = "wird nur umgepackt" // den Grund nennt umpackenUndAblegen
+		maxAufloesung = 0               // Umpacken lässt das Bild, wie es ist
 	}
-	anz.Zeile("  %s  |  %dp mit %s Bildern/s  |  %s Film  |  %s",
-		groesseText(info.GroesseBytes), info.Hoehe, komma(info.FPS, 0),
+	anz.Zeile("  %s  |  %s mit %s Bildern/s  |  %s Film  |  %s",
+		groesseText(info.GroesseBytes), aufloesungText(info, maxAufloesung), komma(info.FPS, 0),
 		uhrText(time.Duration(info.DauerSek)*time.Second), vorhaben)
 	anz.DateiInfo(info.GroesseBytes, geschaetzt)
 
@@ -233,6 +235,8 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 		Ziel:             lokalesErgebnis,
 		CRF:              autoCQ.CRF,
 		UntertitelCodecs: info.UntertitelCodecs,
+		Verkleinern:      verkleinernFilter(info, e),
+		Farbangaben:      farbArgumente(info),
 	}
 	if err := Kodieren(encodeCtx, auftrag, e, info.DauerSek, anz.Stand); err != nil {
 		return fehler("Umwandeln fehlgeschlagen", err)

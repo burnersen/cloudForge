@@ -83,6 +83,13 @@ type EncodeAuftrag struct {
 	// Reihenfolge der Datei (aus VideoInfo). Danach richtet sich, welche
 	// Spur 1:1 kopiert und welche nach SRT übertragen wird.
 	UntertitelCodecs []string
+
+	// Verkleinern bringt das Bild auf die Grösse des Ergebnisses
+	// (verkleinernFilter, seit 0.17.0); leer = Grösse der Quelle.
+	// Farbangaben sind die der Quelle (farbArgumente). Beides gilt nur beim
+	// Umwandeln — beim Umpacken bleibt das Bild ohnehin, wie es ist.
+	Verkleinern string
+	Farbangaben []string
 }
 
 // videoArgumente sind die Encoder-Einstellungen, die für jeden Lauf gelten —
@@ -152,7 +159,11 @@ func EncodeArgumente(auftrag EncodeAuftrag, e Einstellungen) []string {
 	if auftrag.Umpacken {
 		args = append(args, "-c:v", "copy")
 	} else {
+		if auftrag.Verkleinern != "" {
+			args = append(args, "-vf", auftrag.Verkleinern)
+		}
 		args = append(args, videoArgumente(auftrag.CRF, e)...)
+		args = append(args, auftrag.Farbangaben...)
 	}
 	// Ton immer 1:1 (seit 0.14.0, Nutzerwunsch): ein zweites Mal
 	// verlustbehaftet zu kodieren kostet nur Qualität, und MKV nimmt jede
@@ -194,7 +205,7 @@ func Kodieren(ctx context.Context, auftrag EncodeAuftrag, e Einstellungen, gesam
 // verlustfrei ist beides. Dafür ist die Datei dreimal so gross (1,8 GB
 // statt 0,6 GB), was neben dem Film nicht ins Gewicht fällt. Rohdaten wären
 // nur noch 4 s schneller gewesen, bei 7 GB.
-func ProbeSchneiden(ctx context.Context, quelle, ziel string, fenster []Fenster, e Einstellungen) error {
+func ProbeSchneiden(ctx context.Context, quelle, ziel string, fenster []Fenster, verkleinern string, e Einstellungen) error {
 	if len(fenster) == 0 {
 		return fmt.Errorf("keine Messfenster angegeben")
 	}
@@ -202,7 +213,10 @@ func ProbeSchneiden(ctx context.Context, quelle, ziel string, fenster []Fenster,
 	// Die Vergleichsdatei hat dieselbe Bittiefe wie das Ergebnis. So misst
 	// VMAF genau das, was der Encoder verliert. Eine 10-Bit-Quelle wird bei
 	// bittiefe=8 also schon hier gerundet — diese Rundung sieht die Messung nicht.
-	args := append(fensterArgumente(quelle, fenster),
+	// Ebenso die Grösse (seit 0.17.0): Wird verkleinert, ist schon die
+	// Vergleichsdatei verkleinert — gemessen wird dann, was AV1 an der
+	// kleineren Fassung verliert, wie in NVENCForge.
+	args := append(fensterArgumente(quelle, fenster, verkleinern),
 		"-c:v", "ffvhuff",
 		"-pix_fmt", zielPixelFormat(e),
 		ziel)
@@ -217,8 +231,9 @@ func ProbeSchneiden(ctx context.Context, quelle, ziel string, fenster []Fenster,
 // hintereinander und setzt die Bildzeiten neu, damit das Ergebnis bei null
 // beginnt und lückenlos läuft — nur das Bild, ohne Ton und Untertitel. Es
 // fehlen noch Encoder und Zieldatei; so dient es den Messausschnitten und der
-// Grössenprobe gleichermassen.
-func fensterArgumente(quelle string, fenster []Fenster) []string {
+// Grössenprobe gleichermassen. verkleinern (verkleinernFilter) bringt die
+// Stücke auf die Grösse des Ergebnisses, leer = unverändert.
+func fensterArgumente(quelle string, fenster []Fenster, verkleinern string) []string {
 	args := []string{"-nostdin", "-y"}
 	for _, f := range fenster {
 		args = append(args,
@@ -231,7 +246,11 @@ func fensterArgumente(quelle string, fenster []Fenster) []string {
 	for i := range fenster {
 		fmt.Fprintf(&kette, "[%d:%s]", i, ersteFilmspurAuswahl)
 	}
-	fmt.Fprintf(&kette, "concat=n=%d:v=1:a=0[zusammen];[zusammen]setpts=PTS-STARTPTS[fertig]", len(fenster))
+	fmt.Fprintf(&kette, "concat=n=%d:v=1:a=0[zusammen];[zusammen]setpts=PTS-STARTPTS", len(fenster))
+	if verkleinern != "" {
+		kette.WriteString("," + verkleinern)
+	}
+	kette.WriteString("[fertig]")
 
 	return append(args,
 		"-filter_complex", kette.String(),
@@ -255,7 +274,8 @@ func fensterArgumente(quelle string, fenster []Fenster) []string {
 // davon unberührt — gepaart wird weiter jedes Bild, nur gerechnet wird
 // seltener.
 //
-// breite und hoehe sind die Masse der Quelle: Ist sie kleiner als 1080p, wird
+// breite und hoehe sind die Masse der Referenz (seit 0.17.0 die des Ergebnisses,
+// also nach maxAufloesung): Ist sie kleiner als 1080p, wird
 // auf 1080p vergrössert gemessen (seit 0.12.0, siehe vmafMessgroesse).
 func VMAFMessen(ctx context.Context, probe, referenz string, breite, hoehe int, e Einstellungen) (float64, error) {
 	// Alle Kerne: ffmpeg läuft mit niedrigster Priorität (schonenderBefehl),

@@ -77,9 +77,10 @@ func groessenprobeFenster(dauerSek, laengeSek float64, anzahl int) []Fenster {
 
 // GroessenProbe kodiert die Stücke mit dem gewählten CRF und genau den
 // Einstellungen der echten Umwandlung — ohne Qualitätsmessung, die steht ja
-// schon fest — und liefert, welchen Anteil der Quelle das Bild dort kostet.
-func GroessenProbe(ctx context.Context, quelle string, dauerSek float64, crf int, arbeitsOrdner string, e Einstellungen, melde Rueckmeldung) (float64, error) {
-	fenster := groessenprobeFenster(dauerSek, e.MessfensterSek, groessenprobeAnzahl(dauerSek, e.MessfensterSek))
+// schon fest, verkleinert wie das Ergebnis — und liefert, welchen Anteil der
+// Quelle das Bild dort kostet.
+func GroessenProbe(ctx context.Context, quelle string, info VideoInfo, crf int, arbeitsOrdner string, e Einstellungen, melde Rueckmeldung) (float64, error) {
+	fenster := groessenprobeFenster(info.DauerSek, e.MessfensterSek, groessenprobeAnzahl(info.DauerSek, e.MessfensterSek))
 	if len(fenster) == 0 {
 		return 0, fmt.Errorf("Spieldauer unbekannt - keine Groessenprobe moeglich")
 	}
@@ -95,7 +96,7 @@ func GroessenProbe(ctx context.Context, quelle string, dauerSek float64, crf int
 	probe := filepath.Join(arbeitsOrdner, "groessenprobe.mkv")
 	defer os.Remove(probe)
 
-	args := append(fensterArgumente(quelle, fenster), videoArgumente(crf, e)...)
+	args := append(fensterArgumente(quelle, fenster, verkleinernFilter(info, e)), videoArgumente(crf, e)...)
 	args = append(args, probe)
 	gesamtSek := 0.0
 	for _, f := range fenster {
@@ -137,7 +138,7 @@ func ersparnisVorhersagen(ctx context.Context, anz *Anzeige, schritt, gesamt int
 	}
 
 	anz.Schritt(schritt, gesamt, "Groesse pruefen")
-	anteil, err := GroessenProbe(ctx, quelle, info.DauerSek, autoCQ.CRF, arbeitsplatz, e, anz.Stand)
+	anteil, err := GroessenProbe(ctx, quelle, info, autoCQ.CRF, arbeitsplatz, e, anz.Stand)
 	if errors.Is(err, ErrAbgebrochen) || ctx.Err() != nil {
 		return 0, false, ErrAbgebrochen
 	}

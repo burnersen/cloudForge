@@ -64,7 +64,7 @@ Jede Datei durchläuft fünf Schritte:
 |---|---|
 | **1. Datei holen** | Kopie aus dem Cloud-Ordner auf die lokale Platte. Auf dem Cloud-Ordner selbst wird nie gerechnet. Kommt dabei 10 Minuten lang kein einziges Byte an (Cloud hängt), gibt CloudForge diese Datei auf und macht mit der nächsten weiter, statt ewig zu warten. |
 | **2. Qualität messen** | Kurze Stücke an 5 Stellen des Films werden probeweise umgewandelt und per **VMAF** (ein Maß für die Bildqualität, 100 = wie das Original) verglichen. Gewählt wird der höchste **CRF** (Kompressionsstufe), der das Ziel mindestens hält – ab Werk VMAF 95. Danach steht auch fest, wie groß das Ergebnis etwa wird; spart es zu wenig, wird die Datei nur umgepackt. Liegt die Vorhersage knapp an der Schwelle, prüft eine Größenprobe an 20 Stellen über den ganzen Film nach, bevor umgewandelt wird. |
-| **3. Umwandeln** | SVT-AV1, ab Werk preset 9 und 10 Bit (gegen Streifen in Farbverläufen). Ton, Untertitel, Kapitel und Anhänge (etwa Schriften) werden 1:1 übernommen. Einzige Ausnahme: MP4-Textuntertitel kann MKV nicht aufnehmen, sie kommen als SRT an (gleicher Text, gleiche Zeiten). Ein eingebettetes Vorschaubild entfällt. |
+| **3. Umwandeln** | SVT-AV1, ab Werk preset 9 und 10 Bit (gegen Streifen in Farbverläufen). Ton, Untertitel, Kapitel und Anhänge (etwa Schriften) werden 1:1 übernommen. Einzige Ausnahme: MP4-Textuntertitel kann MKV nicht aufnehmen, sie kommen als SRT an (gleicher Text, gleiche Zeiten). Ein eingebettetes Vorschaubild entfällt. Auf Wunsch wird dabei verkleinert (`maxAufloesung`, etwa 4K auf 1080p); die Farbangaben der Quelle – auch HDR – gehen unverändert mit. |
 | **4. Prüfen** | Das Ergebnis wird gegen das Original geprüft: Größe, Spieldauer, alle Spuren. |
 | **5. Ergebnis ablegen** | Hochladen unter einem Zwischennamen – unter seinem richtigen Namen erscheint das Ergebnis erst, wenn es vollständig da ist. Erst dann wandert das Original nach `originals/`. |
 
@@ -150,6 +150,7 @@ Die Einstellungen stehen in `~/cloudforge/cloudforge.ini`; jeder Eintrag ist dor
 | `messfensterAnzahl` | `5` | An so vielen Stellen wird die Qualität gemessen. |
 | `preset` | `9` | SVT-AV1-Preset: höher = schneller, aber größer bei gleicher Qualität. |
 | `bittiefe` | `10` | 10 Bit beugt Streifen in Farbverläufen vor, 8 ist etwas schneller. |
+| `maxAufloesung` | `0` | Höchste Auflösung des Ergebnisses (kurze Kante: 720, 1080, 1440, 2160; 0 = aus), wie in NVENCForge – größeres Material wird ohne Nachschärfen verkleinert. |
 | `kerne` | `6` | Wie stark SVT-AV1 parallel rechnet; 6 ist das Maximum. |
 | `varianceBoost`, `tune0` | `nein` | Zwei SVT-AV1-Schalter zum Ausprobieren – ob es besser aussieht, zeigt nur das Auge. |
 | `vollpruefung` | `nein` | Jedes Ergebnis vor dem Ablegen komplett durchlesen (sicherer, aber langsam). |

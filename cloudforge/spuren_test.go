@@ -71,7 +71,7 @@ func TestEncodeArgumenteSpuren(t *testing.T) {
 // Die Messfenster lesen dieselbe Spur wie die Messprobe — auch dort kein
 // Titelbild, das zufällig als erste Videospur in der Datei steht.
 func TestFensterArgumenteNehmenDieFilmspur(t *testing.T) {
-	args := fensterArgumente("q.mp4", []Fenster{{StartSek: 10, LaengeSek: 8}, {StartSek: 50, LaengeSek: 8}})
+	args := fensterArgumente("q.mp4", []Fenster{{StartSek: 10, LaengeSek: 8}, {StartSek: 50, LaengeSek: 8}}, "")
 	kette := wertNach(args, "-filter_complex")
 	if !strings.Contains(kette, "[0:V:0]") || !strings.Contains(kette, "[1:V:0]") || strings.Contains(kette, ":v:") {
 		t.Errorf("Filter-Eingaenge muessen die echte Filmspur waehlen: %s", kette)
