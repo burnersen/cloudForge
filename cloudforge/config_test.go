@@ -26,6 +26,10 @@ func TestWerkswerteSindDieDesNutzers(t *testing.T) {
 	if e.VarianceBoost || e.Tune0 {
 		t.Errorf("Variance Boost (%v) und tune 0 (%v) muessen ab Werk aus sein", e.VarianceBoost, e.Tune0)
 	}
+	// Seit 0.18.0: Empfehlung der SVT-AV1-Doku für echte Filme (= Werk von SVT).
+	if e.VarianceBoostStaerke != 2 || e.VarianceOktil != 5 {
+		t.Errorf("Variance Boost Staerke %d / Oktil %d, erwartet 2 / 5", e.VarianceBoostStaerke, e.VarianceOktil)
+	}
 	// Den Kosten-Deckel (0.8.0 bis 0.11.1: 50 %) hat der Nutzer am 27.09.2026
 	// abgeschaltet — Qualität geht vor. Mindestersparnis seit 0.11.3 15 %
 	// (vorher 30), Messfenster 5 statt 3 (Vorhersage traf den Film besser).
@@ -165,6 +169,7 @@ func TestINIHinUndZurueck(t *testing.T) {
 		AusgabeOrdnerName: "aus", OriginalOrdnerName: "orig",
 		OriginalBehandlung: OriginalLoeschen,
 		Preset:             7, Kerne: 3, Bittiefe: 8, VarianceBoost: true, Tune0: true,
+		VarianceBoostStaerke: 3, VarianceOktil: 7,
 		ZielVMAF: 95.5, AnkerNiedrig: 18, AnkerHoch: 30, CRFMin: 12, CRFMax: 50,
 		MessfensterAnzahl: 7, MessfensterSek: 9.5, PlateauToleranz: 0.3, PlateauMindestSpa: 4,
 		KostenDeckelProzent: 40, MindestErsparnisProzent: 22,
@@ -278,7 +283,8 @@ func TestAlteINIBekommtNeueSchluesselErgaenzt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, zeile := range []string{"\nbittiefe=10\n", "\nvollpruefung=nein\n", "\nvarianceBoost=nein\n", "\ntune0=nein\n"} {
+	for _, zeile := range []string{"\nbittiefe=10\n", "\nvollpruefung=nein\n", "\nvarianceBoost=nein\n",
+		"\nvarianceBoostStaerke=2\n", "\nvarianceOktil=5\n", "\ntune0=nein\n"} {
 		if !strings.Contains(string(nachErstemStart), zeile) {
 			t.Errorf("%q wurde nicht in die INI geschrieben:\n%s", strings.TrimSpace(zeile), nachErstemStart)
 		}
@@ -351,19 +357,22 @@ func TestEncoderSchalterLesen(t *testing.T) {
 
 // Sind beide Schalter aus, muss SVT-AV1 genau dasselbe bekommen wie bis 0.9.0
 // — sonst änderten sich die Ergebnisse, ohne dass der Nutzer etwas schaltet.
+// Stärke und Oktil (seit 0.18.0) gehen nur mit dem Variance Boost mit.
 func TestSvtParameterNennenNurEingeschalteteSchalter(t *testing.T) {
 	faelle := []struct {
 		varianceBoost, tune0 bool
+		staerke, oktil       int
 		erwartet             string
 	}{
-		{false, false, "lp=6"},
-		{true, false, "lp=6:enable-variance-boost=1"},
-		{false, true, "lp=6:tune=0"},
-		{true, true, "lp=6:tune=0:enable-variance-boost=1"},
+		{false, false, 2, 5, "lp=6"},
+		{false, true, 3, 7, "lp=6:tune=0"}, // Feinregler ohne Variance Boost wirken nicht
+		{true, false, 2, 5, "lp=6:enable-variance-boost=1:variance-boost-strength=2:variance-octile=5"},
+		{true, true, 3, 7, "lp=6:tune=0:enable-variance-boost=1:variance-boost-strength=3:variance-octile=7"},
 	}
 	for _, fall := range faelle {
 		e := standardWerte()
 		e.VarianceBoost, e.Tune0 = fall.varianceBoost, fall.tune0
+		e.VarianceBoostStaerke, e.VarianceOktil = fall.staerke, fall.oktil
 
 		args := videoArgumente(30, e)
 		stelle := slices.Index(args, "-svtav1-params")
@@ -371,9 +380,73 @@ func TestSvtParameterNennenNurEingeschalteteSchalter(t *testing.T) {
 			t.Fatalf("kein -svtav1-params in %v", args)
 		}
 		if args[stelle+1] != fall.erwartet {
-			t.Errorf("Variance Boost %v, tune 0 %v: %q erwartet, bekommen %q",
-				fall.varianceBoost, fall.tune0, fall.erwartet, args[stelle+1])
+			t.Errorf("Variance Boost %v (%d/%d), tune 0 %v: %q erwartet, bekommen %q",
+				fall.varianceBoost, fall.staerke, fall.oktil, fall.tune0, fall.erwartet, args[stelle+1])
 		}
+	}
+}
+
+// Stärke und Oktil nehmen nur, was SVT-AV1 kennt. Eine 0 oder ein leerer
+// Wert ist ein Fehler, der auf varianceBoost verweist — ausgeschaltet wird
+// nur dort. Ein ungültiger Wert darf nichts verändern.
+func TestVarianceReglerLesen(t *testing.T) {
+	faelle := []struct {
+		schluessel, wert string
+		erwartet         int
+		fehler           bool
+	}{
+		{"varianceBoostStaerke", "1", 1, false},
+		{"varianceBoostStaerke", "4", 4, false},
+		{"varianceBoostStaerke", "0", 0, true},
+		{"varianceBoostStaerke", "5", 0, true},
+		{"varianceBoostStaerke", "", 0, true},
+		{"varianceBoostStaerke", "zwei", 0, true},
+		{"varianceOktil", "1", 1, false},
+		{"varianceOktil", "8", 8, false},
+		{"varianceOktil", "0", 0, true},
+		{"varianceOktil", "9", 0, true},
+		{"varianceOktil", "", 0, true},
+	}
+	for _, fall := range faelle {
+		e := standardWerte()
+		vorher := standardWerte()
+		err := wertUebernehmen(&e, fall.schluessel, fall.wert)
+
+		if fall.fehler {
+			if err == nil || !strings.Contains(err.Error(), "varianceBoost=ja/nein") {
+				t.Errorf("%s=%q: Fehler mit Hinweis auf varianceBoost erwartet, bekommen %v",
+					fall.schluessel, fall.wert, err)
+			}
+			if !reflect.DeepEqual(e, vorher) {
+				t.Errorf("%s=%q: ungueltiger Wert hat die Einstellungen veraendert", fall.schluessel, fall.wert)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s=%q: unerwarteter Fehler %v", fall.schluessel, fall.wert, err)
+		}
+		bekommen := e.VarianceBoostStaerke
+		if fall.schluessel == "varianceOktil" {
+			bekommen = e.VarianceOktil
+		}
+		if bekommen != fall.erwartet {
+			t.Errorf("%s=%q: %d erwartet, bekommen %d", fall.schluessel, fall.wert, fall.erwartet, bekommen)
+		}
+	}
+}
+
+// Das Protokoll nennt Stärke und Oktil nur, wenn der Variance Boost an ist —
+// sonst sähe es aus, als hätten sie gewirkt.
+func TestEinstellungenTextNenntFeinreglerNurMitVarianceBoost(t *testing.T) {
+	e := standardWerte()
+	e.VarianceBoostStaerke, e.VarianceOktil = 3, 7
+
+	if text := einstellungenText(e); !strings.Contains(text, "Variance Boost aus,") {
+		t.Errorf("Variance Boost aus erwartet: %q", text)
+	}
+	e.VarianceBoost = true
+	if text := einstellungenText(e); !strings.Contains(text, "Variance Boost an (Staerke 3, Oktil 7),") {
+		t.Errorf("Staerke und Oktil fehlen: %q", text)
 	}
 }
 

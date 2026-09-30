@@ -153,6 +153,7 @@ Die Einstellungen stehen in `~/cloudforge/cloudforge.ini`; jeder Eintrag ist dor
 | `maxAufloesung` | `0` | Höchste Auflösung des Ergebnisses (kurze Kante: 720, 1080, 1440, 2160; 0 = aus), wie in NVENCForge – größeres Material wird ohne Nachschärfen verkleinert. |
 | `kerne` | `6` | Wie stark SVT-AV1 parallel rechnet; 6 ist das Maximum. |
 | `varianceBoost`, `tune0` | `nein` | Zwei SVT-AV1-Schalter zum Ausprobieren – ob es besser aussieht, zeigt nur das Auge. |
+| `varianceBoostStaerke`, `varianceOktil` | `2`, `5` | Feinregler des Variance Boost (Stärke 1–4, Oktil 1–8), wirken nur mit `varianceBoost=ja`. Ab Werk die Empfehlung von SVT-AV1 für echte Filme. |
 | `vollpruefung` | `nein` | Jedes Ergebnis vor dem Ablegen komplett durchlesen (sicherer, aber langsam). |
 | `quellOrdner` | leer | Der Ordner für die Automatik. |
 

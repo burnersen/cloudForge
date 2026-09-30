@@ -31,7 +31,7 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.17.0                                   Datei 2 von 3
+       CloudForge 0.18.0                                   Datei 2 von 3
        -----------------------------------------------------------------
        OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 97,3  in 42 Min
 
@@ -401,6 +401,35 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
              Schatten) mehr Daten - genau dort entstehen sonst Klötzchen und
              Streifen. Die Datei wird dabei kaum größer (gemessen). Ob es dir
              besser gefällt, zeigt nur ein Vergleich mit den Augen.
+
+    varianceBoostStaerke=2
+        Wie stark der Variance Boost wirkt (seit 0.18.0). Gilt nur mit
+        varianceBoost=ja - ein- und ausgeschaltet wird nur dort. Laut der
+        Anleitung von SVT-AV1:
+        1 = mild   - für Zeichentrick und sehr glatte, ruhige Bilder
+        2 = sanft  - passt zu den meisten echten Filmen (EMPFOHLEN, ab Werk)
+        3 = mittel - für Filme, in denen sich sehr kontrastreiche und sehr
+                     kontrastarme Szenen abwechseln (etwa Horror)
+        4 = stark  - sehr aggressiv, nur für Sonderfälle, in denen Details
+                     in ruhigen Flächen über allem stehen
+        Höher = ruhige Flächen bekommen mehr Daten. Beim VMAF-Ziel werden
+        die Daten dabei eher umverteilt als dazugegeben.
+
+    varianceOktil=5
+        Wie wählerisch der Variance Boost ist (seit 0.18.0). Gilt nur mit
+        varianceBoost=ja. SVT-AV1 betrachtet jeden Bildblock in Achteln:
+        1 = ein ruhiges Achtel genügt, damit der Block mehr Daten bekommt,
+        8 = der ganze Block muss ruhig sein.
+        Kleiner = mehr Blöcke bekommen mehr, auch unruhige - die Datei
+        wächst. Größer = sparsamer, aber einzelne ruhige Stellen können
+        schlechter aussehen als ihre Umgebung. SVT-AV1 empfiehlt 4 bis 7;
+        5 ist EMPFOHLEN und ab Werk.
+
+        Bei beiden Werten gilt: 0 oder leer ist ein Fehler, CloudForge
+        startet dann nicht und nennt die Zeile. Ausschalten nur mit
+        varianceBoost=nein. Stärke 2 und Oktil 5 sind auch die eigenen
+        Werkswerte von SVT-AV1 - wer sie so lässt, bekommt genau das, was
+        varianceBoost=ja schon bis 0.17.0 gemacht hat.
 
     tune0=nein
         ja = SVT-AV1 stimmt sich auf den Seheindruck ab statt auf eine

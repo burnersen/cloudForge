@@ -108,13 +108,18 @@ func videoArgumente(crf int, e Einstellungen) []string {
 // svtParameter baut die SVT-AV1-eigenen Einstellungen zusammen. Die beiden
 // Schalter bleiben ungenannt, solange sie aus sind: dann rechnet SVT-AV1 mit
 // seinen Werkswerten (4.2: tune PSNR, Variance Boost aus) genau wie bis 0.9.0.
+// Stärke und Oktil gehen nur mit dem Variance Boost mit, dann aber immer
+// ausdrücklich — so gilt, was in INI und Protokoll steht, auch wenn eine
+// neuere SVT-Fassung andere Werkswerte mitbringt.
 func svtParameter(e Einstellungen) string {
 	teile := []string{"lp=" + strconv.Itoa(e.Kerne)}
 	if e.Tune0 {
 		teile = append(teile, "tune=0")
 	}
 	if e.VarianceBoost {
-		teile = append(teile, "enable-variance-boost=1")
+		teile = append(teile, "enable-variance-boost=1",
+			"variance-boost-strength="+strconv.Itoa(e.VarianceBoostStaerke),
+			"variance-octile="+strconv.Itoa(e.VarianceOktil))
 	}
 	return strings.Join(teile, ":")
 }

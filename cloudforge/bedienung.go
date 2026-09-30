@@ -148,7 +148,15 @@ func laufSperren(ctx context.Context, e Einstellungen, anz *Anzeige) (func(), er
 // jede Datei ihrer Einstellung zuordnen.
 func einstellungenText(e Einstellungen) string {
 	return fmt.Sprintf("Ziel-VMAF %s, Preset %d, %d Bit, Variance Boost %s, tune 0 %s",
-		komma(e.ZielVMAF, 1), e.Preset, e.Bittiefe, anAus(e.VarianceBoost), anAus(e.Tune0))
+		komma(e.ZielVMAF, 1), e.Preset, e.Bittiefe, varianceBoostText(e), anAus(e.Tune0))
+}
+
+// varianceBoostText nennt die Feinregler nur, wenn sie auch wirken.
+func varianceBoostText(e Einstellungen) string {
+	if !e.VarianceBoost {
+		return "aus"
+	}
+	return fmt.Sprintf("an (Staerke %d, Oktil %d)", e.VarianceBoostStaerke, e.VarianceOktil)
 }
 
 func anAus(an bool) string {

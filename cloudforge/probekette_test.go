@@ -84,6 +84,43 @@ func TestProbeKetteMitEchtemFFmpeg(t *testing.T) {
 	}
 }
 
+// SVT-AV1 meldet einen unbekannten Parameter nur als Warnung und rechnet ohne
+// ihn weiter — im Lauf (-loglevel error) fiele das nie auf. Jeder Parameter,
+// den CloudForge setzen kann, muss deshalb hier angenommen werden. Anlass
+// 30.09.2026: ein Vorschlag nannte "chroma-qpoffset", das es nicht gibt.
+func TestSvtNimmtAlleParameterAn(t *testing.T) {
+	ffmpeg := os.Getenv("CLOUDFORGE_TEST_FFMPEG")
+	if ffmpeg == "" {
+		t.Skip("CLOUDFORGE_TEST_FFMPEG nicht gesetzt")
+	}
+	e := standardWerte()
+	e.VarianceBoost, e.Tune0 = true, true
+	// Vom SVT-Werk (2/5) abweichend, damit die Übernahme sichtbar wird.
+	e.VarianceBoostStaerke, e.VarianceOktil = 3, 7
+
+	args := []string{"-hide_banner", "-nostdin",
+		"-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=1"}
+	args = append(args, videoArgumente(40, e)...)
+	args = append(args, "-f", "null", "-")
+	ausgabe, err := exec.Command(ffmpeg, args...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("ffmpeg: %v (%s)", err, ausgabe)
+	}
+	if strings.Contains(string(ausgabe), "Error parsing option") {
+		t.Errorf("SVT-AV1 kennt einen Parameter nicht:\n%s", ausgabe)
+	}
+
+	// SVT-AV1 4.2 nennt die Werte in seiner Übersicht:
+	// "AQ mode / Variance Boost strength / octile / curve : 2 / 3 / 7 / 0".
+	// Eine spätere Fassung darf die Zeile anders schreiben — dann bleibt es
+	// bei der Prüfung oben.
+	for _, zeile := range strings.Split(string(ausgabe), "\n") {
+		if strings.Contains(zeile, "Variance Boost strength / octile") && !strings.Contains(zeile, "/ 3 / 7") {
+			t.Errorf("Staerke 3 / Oktil 7 kamen nicht an: %s", zeile)
+		}
+	}
+}
+
 // Kosten-Deckel mit echtem ffprobe an einer Quelle mit LANGER GOP
 // (Schlüsselbild alle 10 s wie bei vielen Downloads): An den Messstellen muss
 // genau so viel gezählt werden wie in der vollen Paketliste. Bis 0.11.1 las

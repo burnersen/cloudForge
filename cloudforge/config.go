@@ -55,12 +55,15 @@ type Einstellungen struct {
 	Bittiefe      int  // 8 oder 10
 	MaxAufloesung int  // kurze Kante des Ergebnisses höchstens (bildformat.go), 0 = wie die Quelle
 	VarianceBoost bool // SVT-AV1: ruhigen, dunklen Flächen mehr Bits geben
-	Tune0         bool // SVT-AV1 tune 0 (Seheindruck) statt tune 1 (PSNR)
-	ZielVMAF      float64
-	AnkerNiedrig  int // CRF des besseren Ankers
-	AnkerHoch     int // CRF des sparsameren Ankers
-	CRFMin        int
-	CRFMax        int
+	// Feinregler des Variance Boost (seit 0.18.0), wirken nur mit VarianceBoost
+	VarianceBoostStaerke int  // SVT variance-boost-strength, 1 bis 4
+	VarianceOktil        int  // SVT variance-octile, 1 bis 8
+	Tune0                bool // SVT-AV1 tune 0 (Seheindruck) statt tune 1 (PSNR)
+	ZielVMAF             float64
+	AnkerNiedrig         int // CRF des besseren Ankers
+	AnkerHoch            int // CRF des sparsameren Ankers
+	CRFMin               int
+	CRFMax               int
 
 	// Auto-CQ-Verhalten
 	MessfensterAnzahl int
@@ -98,6 +101,9 @@ type Einstellungen struct {
 //   - 10 Bit gegen Streifen in Farbverläufen, kostet dort nur ~20 % Tempo.
 //   - preset 9: 1080p50 mit 1,27x Echtzeit, preset 8 wäre knapp darunter.
 //   - Variance Boost und tune 0 aus: der Nutzer testet sie selbst.
+//   - Variance Boost Stärke 2, Oktil 5 (seit 0.18.0): die Empfehlung der
+//     SVT-AV1-Doku für echte Filme und zugleich die Werkswerte von SVT-AV1 —
+//     wer nur varianceBoost=ja setzt, bekommt dasselbe wie bis 0.17.0.
 //
 // Die frühere Aussage "VMAF 96 ist nicht erreichbar" (21.09., Contabo) war
 // vermutlich ein Messfehler (Bildpaarung nach Zeit, siehe VMAFMessen).
@@ -116,17 +122,19 @@ func standardWerte() Einstellungen {
 
 		OriginalBehandlung: OriginalVerschieben,
 
-		Preset:        9,
-		Kerne:         6,
-		Bittiefe:      10,
-		MaxAufloesung: 0, // aus: niemandem ungefragt die Auflösung nehmen, mit "loeschen" wäre sie weg
-		VarianceBoost: false,
-		Tune0:         false,
-		ZielVMAF:      95,
-		AnkerNiedrig:  22,
-		AnkerHoch:     32,
-		CRFMin:        14,
-		CRFMax:        44,
+		Preset:               9,
+		Kerne:                6,
+		Bittiefe:             10,
+		MaxAufloesung:        0, // aus: niemandem ungefragt die Auflösung nehmen, mit "loeschen" wäre sie weg
+		VarianceBoost:        false,
+		VarianceBoostStaerke: 2,
+		VarianceOktil:        5,
+		Tune0:                false,
+		ZielVMAF:             95,
+		AnkerNiedrig:         22,
+		AnkerHoch:            32,
+		CRFMin:               14,
+		CRFMax:               44,
 
 		MessfensterAnzahl: 5,
 		MessfensterSek:    8,
@@ -186,6 +194,10 @@ func iniAufbau() []iniZeile {
 			"Hoechste Aufloesung des Ergebnisses (kurze Kante), wie maxResolution in\n# NVENCForge: Groesseres Material wird verkleinert, das Seitenverhaeltnis\n# bleibt, vergroessert wird nie. 1080 = hoechstens 1920 x 1080 (hochkant\n# 1080 x 1920). Ohne Nachschaerfen. Erlaubt: 0 (aus, Aufloesung wie die\n# Quelle), 720, 1080, 1440, 2160. Ab Werk 0.\n# Achtung: Mit originalBehandlung=loeschen ist die hoehere Aufloesung danach\n# weg. Was nur umgepackt wird, behaelt seine Aufloesung."},
 		{"varianceBoost", func(e Einstellungen) string { return jaNein(e.VarianceBoost) },
 			"Variance Boost (SVT-AV1): gibt ruhigen, glatten und dunklen Flaechen (Waende,\n# Haut, Schatten) mehr Bits - genau dort entstehen sonst Kloetzchen und\n# Streifen. Gemessen 26.09.2026 an einem 1080p50-Film: bei gleichem CRF\n# 26 % groesser und +0,56 VMAF; beim VMAF-Ziel waehlt Auto-CQ dafuer einen\n# hoeheren CRF, die Datei wird dann kaum groesser. Ob es besser aussieht,\n# zeigt nur das Auge. ja oder nein. Mit welcher Einstellung eine Datei\n# entstand, steht im Protokoll."},
+		{"varianceBoostStaerke", func(e Einstellungen) string { return strconv.Itoa(e.VarianceBoostStaerke) },
+			"Staerke des Variance Boost (SVT-AV1: variance-boost-strength). Wirkt nur\n# mit varianceBoost=ja - ein- und ausgeschaltet wird nur dort. Laut SVT-Doku:\n#   1 = mild   - fuer Zeichentrick und sehr glatte, ruhige Bilder\n#   2 = sanft  - passt zu den meisten echten Filmen (EMPFOHLEN, ab Werk)\n#   3 = mittel - fuer Standbilder und Filme, in denen sich sehr kontrast-\n#                reiche und sehr kontrastarme Szenen abwechseln (Horror)\n#   4 = stark  - sehr aggressiv, nur fuer Sonderfaelle, in denen Details\n#                in ruhigen Flaechen ueber allem stehen\n# Hoeher = ruhige Flaechen bekommen mehr Bits. Mit Staerke 2 blieb die Datei\n# beim VMAF-Ziel etwa gleich gross (gemessen 26.09.2026), die Bits werden\n# also eher umverteilt. Ob es besser aussieht, zeigt nur das Auge.\n# Erlaubt: 1 bis 4."},
+		{"varianceOktil", func(e Einstellungen) string { return strconv.Itoa(e.VarianceOktil) },
+			"Wie waehlerisch der Variance Boost ist (SVT-AV1: variance-octile). Wirkt\n# nur mit varianceBoost=ja. SVT betrachtet jeden Bildblock in Achteln:\n# 1 = ein ruhiges Achtel genuegt, damit der Block mehr Bits bekommt,\n# 8 = der ganze Block muss ruhig sein. Kleiner = mehr Bloecke bekommen mehr,\n# auch unruhige - die Datei waechst. Groesser = sparsamer, aber einzelne\n# ruhige Stellen koennen schlechter aussehen als ihre Umgebung. Die SVT-Doku\n# empfiehlt 4 bis 7; 5 ist EMPFOHLEN und ab Werk (zugleich der Werkswert\n# von SVT-AV1). Erlaubt: 1 bis 8."},
 		{"tune0", func(e Einstellungen) string { return jaNein(e.Tune0) },
 			"tune 0 (SVT-AV1): stimmt den Encoder auf den Seheindruck ab statt auf die\n# Rechengenauigkeit PSNR (Werk). Gemessen 26.09.2026 an einem 1080p50-Film:\n# beim gleichen VMAF-Ziel etwa 3 % groesser. Ob es schaerfer aussieht, zeigt\n# nur das Auge. ja oder nein."},
 		{"zielVMAF", func(e Einstellungen) string { return zahl(e.ZielVMAF) },
@@ -372,6 +384,10 @@ func wertUebernehmen(e *Einstellungen, schluessel, wert string) error {
 		return maxAufloesungLesen(e, wert)
 	case "varianceBoost":
 		e.VarianceBoost = istJa(wert)
+	case "varianceBoostStaerke":
+		return varianceReglerLesen(wert, 4, &e.VarianceBoostStaerke)
+	case "varianceOktil":
+		return varianceReglerLesen(wert, 8, &e.VarianceOktil)
 	case "tune0":
 		e.Tune0 = istJa(wert)
 	case "zielVMAF":
@@ -440,6 +456,17 @@ func maxAufloesungLesen(e *Einstellungen, wert string) error {
 		return fmt.Errorf("unbekannter Wert %q (erlaubt: 0 = aus, 720, 1080, 1440, 2160)", wert)
 	}
 	e.MaxAufloesung = zahl
+	return nil
+}
+
+// varianceReglerLesen liest Stärke und Oktil des Variance Boost (ab 1 bis
+// max, wie SVT-AV1 sie annimmt). Eine 0 oder ein leerer Wert soll auffallen,
+// statt still „aus" zu bedeuten: ein- und ausgeschaltet wird nur mit
+// varianceBoost — der Hinweis sagt das gleich dazu.
+func varianceReglerLesen(wert string, max int, ziel *int) error {
+	if err := ganzzahl(wert, 1, max, ziel); err != nil {
+		return fmt.Errorf("%w - ein- und ausgeschaltet wird mit varianceBoost=ja/nein", err)
+	}
 	return nil
 }
 
