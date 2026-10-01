@@ -198,9 +198,9 @@ func (s *crfSuche) deckeln(erg AutoCQErgebnis) (AutoCQErgebnis, error) {
 		return erg, nil
 	}
 
-	erg.Hinweis = fmt.Sprintf("Gedeckelt: VMAF %s haette %.0f %% der Quelle gekostet, erlaubt sind %.0f %%. "+
-		"Stattdessen CRF %d mit VMAF %s.", komma(s.ziel(), 1), erg.AnteilQuelle*100,
-		s.e.KostenDeckelProzent, treffer.CRF, komma(treffer.VMAF, 1))
+	erg.Hinweis = fmt.Sprintf("Gedeckelt: Ziel %s haette %.0f %% der Quelle gekostet, erlaubt sind %.0f %%. "+
+		"Stattdessen CRF %d mit %s.", vmafZielText(s.e), erg.AnteilQuelle*100,
+		s.e.KostenDeckelProzent, treffer.CRF, vmafText(treffer.Wert, treffer.Mittel))
 	erg.CRF, erg.ErwarteterVMAF = treffer.CRF, treffer.VMAF
 	erg.AnteilQuelle = s.anteil(treffer)
 	erg.Gedeckelt = true
@@ -249,10 +249,10 @@ func (s *crfSuche) deckelSprung() (erg AutoCQErgebnis, gesprungen bool, err erro
 		ZielErreichbar: niedrig.VMAF >= s.ziel(),
 		AnteilQuelle:   s.anteil(treffer),
 		Gedeckelt:      true,
-		Hinweis: fmt.Sprintf("Gedeckelt: schon CRF %d kostet %.0f %% der Quelle und bleibt mit VMAF %s unter "+
-			"dem Ziel %s, erlaubt sind %.0f %%. Stattdessen CRF %d mit VMAF %s.",
-			hoch.CRF, s.anteil(hoch)*100, komma(hoch.VMAF, 1), komma(s.ziel(), 1),
-			s.e.KostenDeckelProzent, treffer.CRF, komma(treffer.VMAF, 1)),
+		Hinweis: fmt.Sprintf("Gedeckelt: schon CRF %d kostet %.0f %% der Quelle und bleibt mit %s unter "+
+			"dem Ziel %s, erlaubt sind %.0f %%. Stattdessen CRF %d mit %s.",
+			hoch.CRF, s.anteil(hoch)*100, vmafText(hoch.Wert, hoch.Mittel), vmafZielText(s.e),
+			s.e.KostenDeckelProzent, treffer.CRF, vmafText(treffer.Wert, treffer.Mittel)),
 		Messungen: s.messungen,
 	}, true, nil
 }

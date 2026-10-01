@@ -42,9 +42,13 @@ type Fenster struct {
 
 // Messung hält, was ein CRF-Wert an den Ausschnitten gebracht hat.
 type Messung struct {
-	CRF    int
-	VMAF   float64 // der Wert, den die Suche mit dem Ziel vergleicht (VMAFWerte.Wert)
-	Mittel float64 // Mittelwert, nur fürs Protokoll
+	CRF int
+	// VMAF vergleicht die Suche mit dem Ziel (crfSuche.massgeblich): der
+	// gemessene Wert, beim Messen am Perzentil zusätzlich durch den
+	// Mittelwert begrenzt. Für Anzeige und Protokoll zählen Wert und Mittel.
+	VMAF   float64
+	Wert   float64 // so gemessen: das Perzentil (bei vmafPerzentil=0 der Mittelwert)
+	Mittel float64 // der Mittelwert
 	Bytes  int64
 }
 
@@ -78,19 +82,35 @@ type AutoCQErgebnis struct {
 	Perzentil int
 }
 
-// ErwarteterMittelwert ist der Mittelwert beim gewählten CRF — beim Messen
-// am Mittelwert dasselbe wie ErwarteterVMAF.
-func (a AutoCQErgebnis) ErwarteterMittelwert() float64 {
-	for _, m := range a.Messungen {
-		if m.CRF == a.CRF {
-			return m.Mittel
-		}
+// ErwarteterWert und ErwarteterMittelwert sind die gemessenen Werte beim
+// gewählten CRF, so wie sie Anzeige und Protokoll nennen. ErwarteterVMAF ist
+// dagegen der Wert, mit dem die Suche gerechnet hat (siehe Messung.VMAF).
+func (a AutoCQErgebnis) ErwarteterWert() float64 {
+	if m, ok := a.gewaehlteMessung(); ok {
+		return m.Wert
 	}
 	return a.ErwarteterVMAF
 }
 
+func (a AutoCQErgebnis) ErwarteterMittelwert() float64 {
+	if m, ok := a.gewaehlteMessung(); ok {
+		return m.Mittel
+	}
+	return a.ErwarteterVMAF
+}
+
+func (a AutoCQErgebnis) gewaehlteMessung() (Messung, bool) {
+	for _, m := range a.Messungen {
+		if m.CRF == a.CRF {
+			return m, true
+		}
+	}
+	return Messung{}, false
+}
+
 // vmafZiel ist die Untergrenze, die Auto-CQ hält — für den Wert, den
 // vmafPerzentil auswählt: das Perzentil-Ziel oder das Ziel für den Mittelwert.
+// Beim Perzentil gilt zusätzlich zielVMAF für den Mittelwert (massgeblich).
 func vmafZiel(e Einstellungen) float64 {
 	if e.VMAFPerzentil > 0 {
 		return e.ZielVMAFPerzentil
@@ -115,7 +135,7 @@ func crfAnschlagText(a AutoCQErgebnis, e Einstellungen) string {
 		return fmt.Sprintf("CRF-Anschlag unten: gewaehlt CRF %d = crfMin.", a.CRF)
 	case !a.ZielErreichbar:
 		return fmt.Sprintf("CRF-Anschlag unten: schon ankerNiedrig (CRF %d) verfehlt das Ziel %s - tiefer sucht Auto-CQ nicht.",
-			e.AnkerNiedrig, komma(vmafZiel(e), 1))
+			e.AnkerNiedrig, vmafZielText(e))
 	}
 	return ""
 }
@@ -273,6 +293,28 @@ func (s *crfSuche) ziel() float64 {
 	return vmafZiel(s.e)
 }
 
+// massgeblich verdichtet eine Messung zu dem einen Wert, den die Suche mit
+// ziel() vergleicht.
+//
+// Sicherheitsnetz (seit 0.19.1): Beim Messen am Perzentil muss zusätzlich der
+// Mittelwert sein eigenes Ziel (zielVMAF) halten. Am 01.10.2026 wählte 0.19.0
+// für einen sehr gleichmässigen 1080p50-Film CRF 40: Das Perzentil hielt mit
+// 92,1 sein Ziel, der Mittelwert lag mit 94,4 aber unter der 95, die der
+// Nutzer bis dahin verlangt hatte — das Bild wäre schlechter geworden als
+// vorher. Nur am Perzentil zu messen hält schwache Szenen fern, lässt bei
+// gleichmässigen Filmen aber den ganzen Film zu weit absinken.
+//
+// Der Mittelwert wird dafür um den Abstand der beiden Ziele auf die Skala des
+// Perzentils verschoben, und der knappere Wert zählt. Er hält ziel() genau
+// dann, wenn Perzentil UND Mittelwert ihre Ziele halten — so bleibt die Suche
+// selbst (Hochrechnen, Eingrenzen, Plateau, Deckel) unverändert.
+func (s *crfSuche) massgeblich(w VMAFWerte) float64 {
+	if s.e.VMAFPerzentil <= 0 {
+		return w.Wert
+	}
+	return min(w.Wert, w.Mittel-(s.e.ZielVMAF-s.e.ZielVMAFPerzentil))
+}
+
 // messen kodiert die Ausschnitte mit einem CRF-Wert und misst die Qualität.
 // Bereits gemessene Werte werden wiederverwendet.
 func (s *crfSuche) messen(crf int) (Messung, error) {
@@ -291,7 +333,7 @@ func (s *crfSuche) messen(crf int) (Messung, error) {
 		return Messung{}, err
 	}
 
-	m := Messung{CRF: crf, VMAF: werte.Wert, Mittel: werte.Mittel, Bytes: bytes}
+	m := Messung{CRF: crf, VMAF: s.massgeblich(werte), Wert: werte.Wert, Mittel: werte.Mittel, Bytes: bytes}
 	s.messungen = append(s.messungen, m)
 	s.melden(crf, werte.Wert, werte.Mittel)
 	return m, nil
@@ -467,8 +509,8 @@ func (s *crfSuche) plateauWeg(niedrig, hoch Messung) (AutoCQErgebnis, error) {
 	hinweis := fmt.Sprintf(
 		"Ziel %s ist mit diesem Material nicht erreichbar (bestenfalls %s bei CRF %d). "+
 			"Gewaehlt CRF %d mit %s — spart %.0f %% gegenueber dem besten Wert.",
-		komma(s.ziel(), 1), komma(niedrig.VMAF, 1), niedrig.CRF,
-		beste.CRF, komma(beste.VMAF, 1), ProzentKleiner(niedrig.Bytes, beste.Bytes))
+		vmafZielText(s.e), vmafText(niedrig.Wert, niedrig.Mittel), niedrig.CRF,
+		beste.CRF, vmafText(beste.Wert, beste.Mittel), ProzentKleiner(niedrig.Bytes, beste.Bytes))
 
 	return AutoCQErgebnis{
 		CRF:            beste.CRF,
@@ -500,8 +542,8 @@ func (s *crfSuche) plateauRand(boden float64, niedrig, hoch Messung) (Messung, e
 }
 
 func (s *crfSuche) hinweisZurWahl(gewaehlt Messung) string {
-	return fmt.Sprintf("CRF %d trifft %.2f (Ziel %.1f), aus %d Messungen.",
-		gewaehlt.CRF, gewaehlt.VMAF, s.ziel(), len(s.messungen))
+	return fmt.Sprintf("CRF %d trifft %s (Ziel %s), aus %d Messungen.",
+		gewaehlt.CRF, vmafText(gewaehlt.Wert, gewaehlt.Mittel), vmafZielText(s.e), len(s.messungen))
 }
 
 // interpolieren rechnet aus zwei Messpunkten den CRF-Wert für das Ziel hoch.

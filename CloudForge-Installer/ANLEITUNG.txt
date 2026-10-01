@@ -31,7 +31,7 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.19.0                                   Datei 2 von 3
+       CloudForge 0.19.1                                   Datei 2 von 3
        -----------------------------------------------------------------
        OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 92,4 (Mittel 96,3)  in 42 Min
 
@@ -330,8 +330,10 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         Woran CloudForge die Bildqualität misst (seit 0.19.0).
         5 = am 5-%-Perzentil: 95 % der gemessenen Bilder sind mindestens so
             gut wie das Ziel. So fallen einzelne schwache Szenen auf, die im
-            Durchschnitt untergehen würden (ab Werk).
-        0 = am Durchschnitt (Mittelwert) wie bis 0.18.0 - dann gilt zielVMAF.
+            Durchschnitt untergehen würden (ab Werk). Zusätzlich muss der
+            Durchschnitt zielVMAF halten (Sicherheitsnetz, siehe dort).
+        0 = am Durchschnitt (Mittelwert) wie bis 0.18.0 - dann gilt nur
+            zielVMAF.
         Ehrlich: In sehr dunklen Szenen ist die Messung selbst wenig
         empfindlich. Gegen Klötzchen in Schatten hilft dort eher
         varianceBoost.
@@ -340,15 +342,21 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         Das Qualitätsziel für das Perzentil - wie zielVMAF eine Untergrenze.
         Das Perzentil liegt immer unter dem Durchschnitt. Gemessen an 6
         Filmen: Mit 92 werden die Dateien im Schnitt genauso groß wie mit
-        zielVMAF=96 am Durchschnitt. Gleichmäßige Filme werden dabei bis zu
-        19 % kleiner, Filme mit einzelnen schwachen Szenen bis zu 33 %
-        größer - genau dort sollen die Daten hin.
+        zielVMAF=96 am Durchschnitt. Filme mit einzelnen schwachen Szenen
+        werden dabei bis zu 33 % größer - genau dort sollen die Daten hin.
+        Gleichmäßige Filme werden kleiner, aber nie schlechter, als
+        zielVMAF für den Durchschnitt erlaubt.
         Faustregel: Durchschnitts-Ziel minus 4 (95 -> 91, 96 -> 92).
         Im Protokoll steht bei jeder Messung beides, z. B.
         "CRF 28 ergibt VMAF 92,31 (Mittel 96,05)".
 
     zielVMAF=95
-        Gilt nur mit vmafPerzentil=0 (Messen am Durchschnitt).
+        Gilt immer: mit vmafPerzentil=0 allein, sonst als Sicherheitsnetz
+        zusätzlich zum Perzentil (seit 0.19.1). Bei einem sehr
+        gleichmäßigen Film hielt das Perzentil sein Ziel schon bei CRF 40,
+        der Durchschnitt lag dort aber bei 94,4 - schlechter als mit
+        zielVMAF=95 vorher. Mit dem Netz wurde es CRF 36 (Durchschnitt
+        95,1). So wird keine Datei schlechter als mit diesem Wert allein.
         Die Bildqualität. CloudForge sucht für jeden Film die kleinste Datei,
         die diesen Wert mindestens erreicht. Gemessen an einer 1080p-Szene:
             93   = sichtbar weicher, Klötzchen, Streifen  (etwa 1/5 der Größe)

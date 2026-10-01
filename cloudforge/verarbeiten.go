@@ -70,7 +70,7 @@ type DateiErgebnis struct {
 
 // autoCQText fasst die Wahl von Auto-CQ für die Anzeige zusammen.
 func autoCQText(a AutoCQErgebnis) string {
-	text := fmt.Sprintf("gewaehlt CRF %d, erwartet %s", a.CRF, vmafText(a.ErwarteterVMAF, a.ErwarteterMittelwert()))
+	text := fmt.Sprintf("gewaehlt CRF %d, erwartet %s", a.CRF, vmafText(a.ErwarteterWert(), a.ErwarteterMittelwert()))
 	if a.AnteilQuelle > 0 {
 		text += fmt.Sprintf(", ~%.0f %% der Quelle", a.AnteilQuelle*100)
 	}
@@ -315,7 +315,7 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 		QuelleBytes:   info.GroesseBytes,
 		ErgebnisBytes: ergebnisBytes,
 		CRF:           autoCQ.CRF,
-		VMAF:          autoCQ.ErwarteterVMAF,
+		VMAF:          autoCQ.ErwarteterWert(),
 		VMAFMittel:    autoCQ.ErwarteterMittelwert(),
 		Meldung:       meldung,
 		Bilder:        int64(math.Round(bilder)),

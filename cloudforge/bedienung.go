@@ -154,11 +154,13 @@ func einstellungenText(e Einstellungen) string {
 }
 
 // vmafZielText nennt das Ziel zusammen mit dem Wert, an dem gemessen wird
-// (seit 0.19.0) — "93,0" allein liesse sich nicht mit den Läufen davor
-// vergleichen, die am Mittelwert gemessen haben.
+// (seit 0.19.0) — "92,0" allein liesse sich nicht mit den Läufen davor
+// vergleichen, die am Mittelwert gemessen haben. Beim Perzentil steht das
+// Sicherheitsnetz für den Mittelwert dabei (seit 0.19.1, siehe massgeblich).
 func vmafZielText(e Einstellungen) string {
 	if e.VMAFPerzentil > 0 {
-		return fmt.Sprintf("%s (%d-%%-Perzentil)", komma(vmafZiel(e), 1), e.VMAFPerzentil)
+		return fmt.Sprintf("%s (%d-%%-Perzentil, Mittel mindestens %s)",
+			komma(e.ZielVMAFPerzentil, 1), e.VMAFPerzentil, komma(e.ZielVMAF, 1))
 	}
 	return komma(e.ZielVMAF, 1) + " (Mittelwert)"
 }

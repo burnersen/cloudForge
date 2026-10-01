@@ -230,6 +230,76 @@ func TestSucheMisstAmPerzentil(t *testing.T) {
 	}
 }
 
+// Der echte Fall vom 01.10.2026, Werte aus dem Protokoll eines sehr
+// gleichmässigen 1080p50-Films: Nur am Perzentil gemessen wählte 0.19.0 CRF 40
+// — das Perzentil hielt mit 92,12 sein Ziel, der Mittelwert lag mit 94,37
+// aber unter der 95, die der Nutzer bis dahin verlangt hatte. Das
+// Sicherheitsnetz (seit 0.19.1) lässt den Mittelwert nie unter zielVMAF fallen.
+func TestSicherheitsnetzHaeltDenMittelwert(t *testing.T) {
+	perzentil := map[int]float64{18: 95.96, 32: 93.99, 39: 92.08, 40: 92.12, 41: 91.79, 44: 90.78}
+	mittel := map[int]float64{18: 97.62, 32: 96.00, 39: 94.47, 40: 94.37, 41: 94.10, 44: 93.21}
+	suche := func(zielMittel float64) AutoCQErgebnis {
+		t.Helper()
+		s := testSuche(0, [2]int{18, 32}, nil)
+		s.e.VMAFPerzentil, s.e.ZielVMAFPerzentil, s.e.ZielVMAF = 5, 92, zielMittel
+		s.probe = func(crf int) (VMAFWerte, int64, error) {
+			werte := VMAFWerte{Wert: linear(perzentil, crf), Mittel: linear(mittel, crf)}
+			return werte, int64(100e6 * math.Pow(0.94, float64(crf))), nil
+		}
+		ergebnis, err := s.suchen()
+		if err != nil {
+			t.Fatalf("unerwarteter Fehler: %v", err)
+		}
+		return ergebnis
+	}
+
+	// Ein Mittelwert-Ziel, das nie greift: genau die Wahl von 0.19.0.
+	if ohneNetz := suche(0); ohneNetz.CRF != 40 {
+		t.Errorf("ohne Netz CRF 40 erwartet (wie im echten Lauf), bekommen CRF %d", ohneNetz.CRF)
+	}
+
+	// Mit zielVMAF 95: CRF 36 hat Mittel 95,13, CRF 37 nur noch 94,91.
+	mitNetz := suche(95)
+	if mitNetz.CRF != 36 {
+		t.Errorf("mit Netz CRF 36 erwartet, bekommen CRF %d", mitNetz.CRF)
+	}
+	if mitNetz.ErwarteterMittelwert() < 95 || mitNetz.ErwarteterWert() < 92 {
+		t.Errorf("Perzentil %.2f / Mittel %.2f: beide Ziele (92 / 95) muessen halten",
+			mitNetz.ErwarteterWert(), mitNetz.ErwarteterMittelwert())
+	}
+	// Anzeige und Protokoll nennen die echten Messwerte, nicht den Rechenwert.
+	if text := autoCQText(mitNetz); !strings.Contains(text, "VMAF 92,9 (Mittel 95,1)") {
+		t.Errorf("echte Werte in der Anzeige erwartet: %q", text)
+	}
+	if text := vmafZielText(standardWerte()); !strings.Contains(text, "Mittel mindestens 95,0") {
+		t.Errorf("das Sicherheitsnetz gehoert in die Zielangabe: %q", text)
+	}
+}
+
+// Das Netz darf nur greifen, wenn es nötig ist: Hält der Mittelwert sein Ziel
+// ohnehin (ungleichmässiger Film, Mittel weit über dem Perzentil), wählt die
+// Suche genau dasselbe wie ohne Netz.
+func TestSicherheitsnetzAendertSonstNichts(t *testing.T) {
+	perzentil := map[int]float64{18: 95.98, 22: 95.01, 26: 93.68, 30: 92.13, 34: 89.68}
+	mittel := map[int]float64{18: 99.24, 22: 98.94, 26: 98.39, 30: 97.56, 34: 96.21}
+	wahl := func(zielMittel float64) int {
+		s := testSuche(0, [2]int{18, 30}, nil)
+		s.e.VMAFPerzentil, s.e.ZielVMAFPerzentil, s.e.ZielVMAF = 5, 92, zielMittel
+		s.probe = func(crf int) (VMAFWerte, int64, error) {
+			werte := VMAFWerte{Wert: linear(perzentil, crf), Mittel: linear(mittel, crf)}
+			return werte, int64(100e6 * math.Pow(0.94, float64(crf))), nil
+		}
+		ergebnis, err := s.suchen()
+		if err != nil {
+			t.Fatalf("unerwarteter Fehler: %v", err)
+		}
+		return ergebnis.CRF
+	}
+	if ohne, mit := wahl(0), wahl(95); ohne != mit {
+		t.Errorf("das Netz hat eingegriffen, obwohl der Mittelwert hielt: ohne CRF %d, mit CRF %d", ohne, mit)
+	}
+}
+
 func TestCRFAnschlagText(t *testing.T) {
 	e := standardWerte()
 	e.CRFMin, e.CRFMax, e.AnkerNiedrig = 14, 44, 18
