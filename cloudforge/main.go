@@ -31,7 +31,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.18.0"
+const appVersion = "0.19.0"
 
 func main() {
 	err := starten()
@@ -201,10 +201,32 @@ func verarbeitenStarten(ctx context.Context, pfade []string, e Einstellungen, hi
 	}
 	anz.Zeile("\n%d Datei(en) gefunden, davon %d noch offen - die groessten zuerst.", len(dateien), len(offen))
 
-	ablauf := &Ablauf{Einstellungen: e, Zustand: zustand, Anzeige: anz}
-	defer ablauf.VorabVerwerfen() // eine nicht mehr abgeholte Vorab-Kopie
+	// Mehrere Dateien gleichzeitig nur, wenn eingeschaltet (parallelDateien)
+	// und wenn es so viele gibt. Die Kerne werden dabei nicht aufgeteilt
+	// (gemessen, siehe svtParameter); mit der tatsächlichen Zahl wächst nur
+	// die Notbremse je Datei (verarbeiten.go).
+	parallel := min(max(e.ParallelDateien, 1), len(offen))
+	eDatei := e
+	eDatei.ParallelDateien = parallel
+	var platzbuch *Platzbuch
+	if parallel > 1 {
+		platzbuch = NeuesPlatzbuch()
+	}
+	ablaeufe := make([]*Ablauf, 0, parallel)
+	for _, platzAnzeige := range anz.Plaetze(parallel) {
+		ablaeufe = append(ablaeufe,
+			&Ablauf{Einstellungen: eDatei, Zustand: zustand, Anzeige: platzAnzeige, Platzbuch: platzbuch})
+	}
+	defer func() {
+		for _, ablauf := range ablaeufe {
+			ablauf.VorabVerwerfen() // eine nicht mehr abgeholte Vorab-Kopie
+		}
+	}()
 	if !hintergrund {
-		laufHinweiseZeigen(e, ablauf.erfahrung())
+		laufHinweiseZeigen(eDatei, ablaeufe[0].erfahrung())
+	}
+	if parallel > 1 {
+		anz.Zeile("%d Dateien werden gleichzeitig bearbeitet.", parallel)
 	}
 	var lauf laufBilanz
 
@@ -213,49 +235,61 @@ func verarbeitenStarten(ctx context.Context, pfade []string, e Einstellungen, hi
 	anz.UebersichtOeffnen()
 	defer anz.UebersichtSchliessen()
 
-	for nummer, pfad := range offen {
-		anz.Datei(nummer+1, len(offen), filepath.Base(pfad))
-		anz.Warteschlange(restDauer(groessen[nummer+1:], ablauf.erfahrung()))
-		ablauf.Naechste = ""
-		if nummer+1 < len(offen) {
-			ablauf.Naechste = offen[nummer+1]
-		}
-		ergebnis := ablauf.EineDatei(ctx, pfad)
-
+	schlange := neueDateiSchlange(offen, groessen)
+	abgebrochen, vorfahrt := false, false
+	dateienAbarbeiten(ctx, schlange, ablaeufe, func(platzAnzeige *Anzeige, pfad string, ergebnis DateiErgebnis) bool {
 		// Ein Abbruch durch den Nutzer ist kein Fehler der Datei und wird
 		// deshalb nicht vermerkt — beim nächsten Mal kommt sie wieder dran.
 		if ergebnis.Abgebrochen() || (ctx.Err() != nil && ergebnis.Eintrag.Status == StatusFehler) {
-			anz.Zeile("")
-			anz.Zeile("ABGEBROCHEN. Das Original ist unangetastet, Halbfertiges wurde entfernt.")
-			anz.Zeile("Beim naechsten Mal faengt diese Datei einfach von vorn an.")
-			return nil
+			if !abgebrochen {
+				anz.Zeile("")
+				anz.Zeile("ABGEBROCHEN. Das Original ist unangetastet, Halbfertiges wurde entfernt.")
+				if parallel > 1 {
+					anz.Zeile("Beim naechsten Mal fangen die angefangenen Dateien einfach von vorn an.")
+				} else {
+					anz.Zeile("Beim naechsten Mal faengt diese Datei einfach von vorn an.")
+				}
+			}
+			abgebrochen = true
+			return false
 		}
 
-		zeigeDateiErgebnis(anz, ergebnis)
+		zeigeDateiErgebnis(platzAnzeige, ergebnis)
 		if ergebnis.Eintrag.Meldung == string(NichtMehrDa) {
-			continue // nichts zu zählen, die Datei gibt es nicht mehr
+			return true // nichts zu zählen, die Datei gibt es nicht mehr
 		}
 		lauf.dazu(pfad, ergebnis)
 		if err := zustand.DateiFertig(ergebnis.Eintrag); err != nil {
 			// Nur die Gesamtbilanz leidet — was erledigt ist, zeigen die Ordner.
-			anz.Zeile("  Hinweis: Gesamtbilanz nicht gespeichert: %v", err)
+			platzAnzeige.Zeile("  Hinweis: Gesamtbilanz nicht gespeichert: %v", err)
 		}
 
 		// Kam der Abbruch erst beim Ablegen, ist diese Datei trotzdem sauber
 		// fertig geworden — aber die nächste wird nicht mehr angefangen.
 		if ctx.Err() != nil {
-			anz.Zeile("")
-			anz.Zeile("ABGEBROCHEN nach dieser Datei. Beim naechsten Mal geht es mit der naechsten weiter.")
-			return nil
+			if !abgebrochen {
+				anz.Zeile("")
+				anz.Zeile("ABGEBROCHEN nach dieser Datei. Beim naechsten Mal geht es mit der naechsten weiter.")
+			}
+			abgebrochen = true
+			return false
 		}
 
 		// Wartet ein Fenster (jemand hat Dateien aufs Symbol gezogen), macht
 		// der Hintergrundlauf jetzt Platz. Der nächste Takt macht weiter.
-		if hintergrund && nummer < len(offen)-1 && VorfahrtGewuenscht(vorfahrtPfad(e)) {
-			anz.Zeile("")
-			anz.Zeile("VORFAHRT: Ein Fenster wartet mit eigenen Dateien - der Zeitplan macht spaeter weiter.")
-			break
+		// Laufen mehrere Dateien, werden die angefangenen noch fertig.
+		if hintergrund && (vorfahrt || (len(schlange.nichtAngefangen()) > 0 && VorfahrtGewuenscht(vorfahrtPfad(e)))) {
+			if !vorfahrt {
+				anz.Zeile("")
+				anz.Zeile("VORFAHRT: Ein Fenster wartet mit eigenen Dateien - der Zeitplan macht spaeter weiter.")
+			}
+			vorfahrt = true
+			return false
 		}
+		return true
+	})
+	if abgebrochen {
+		return nil
 	}
 
 	anz.UebersichtSchliessen()
@@ -311,6 +345,7 @@ func protokollStarten(e Einstellungen, anz *Anzeige, hintergrund bool, offen int
 	}
 	protokoll.Zeile(fmt.Sprintf("===== CloudForge %s - Lauf beginnt (%s), %d Datei(en) offen =====", appVersion, art, offen))
 	protokoll.Zeile("Einstellungen: " + einstellungenText(e))
+	protokoll.Zeile("Werkzeuge: " + WerkzeugVersionen(e))
 	anz.ProtokollSetzen(protokoll)
 	return protokoll
 }
@@ -372,11 +407,11 @@ func zeigeDateiErgebnis(anz *Anzeige, ergebnis DateiErgebnis) {
 
 	switch eintrag.Status {
 	case StatusErledigt:
-		anz.Zeile("  FERTIG nach %s: %s statt %s (%s %% kleiner), VMAF %s",
+		anz.Zeile("  FERTIG nach %s: %s statt %s (%s %% kleiner), %s",
 			uhrText(ergebnis.Dauer),
 			groesseText(eintrag.ErgebnisBytes), groesseText(eintrag.QuelleBytes),
 			komma(ProzentKleiner(eintrag.QuelleBytes, eintrag.ErgebnisBytes), 0),
-			komma(eintrag.VMAF, 1))
+			vmafText(eintrag.VMAF, eintrag.VMAFMittel))
 		wohinZeigen(anz, ergebnis)
 
 	case StatusUmgepackt:
@@ -413,10 +448,10 @@ func kurzErgebnis(ergebnis DateiErgebnis) string {
 	eintrag := ergebnis.Eintrag
 	switch eintrag.Status {
 	case StatusErledigt:
-		return fmt.Sprintf("%s → %s  (–%s %%)  VMAF %s  in %s",
+		return fmt.Sprintf("%s → %s  (–%s %%)  %s  in %s",
 			groesseText(eintrag.QuelleBytes), groesseText(eintrag.ErgebnisBytes),
 			komma(ProzentKleiner(eintrag.QuelleBytes, eintrag.ErgebnisBytes), 0),
-			komma(eintrag.VMAF, 1), uhrText(ergebnis.Dauer))
+			vmafText(eintrag.VMAF, eintrag.VMAFMittel), uhrText(ergebnis.Dauer))
 	case StatusUmgepackt:
 		return fmt.Sprintf("%s → %s  umgepackt (lohnt nicht)  in %s",
 			groesseText(eintrag.QuelleBytes), groesseText(eintrag.ErgebnisBytes), uhrText(ergebnis.Dauer))
@@ -431,6 +466,9 @@ func kurzErgebnis(ergebnis DateiErgebnis) string {
 // das Ergebnis, ohne etwas umzuwandeln. Nuetzlich, um vor einem langen Lauf
 // zu sehen, was herauskommen wird.
 func analyseAusgeben(ctx context.Context, pfade []string, e Einstellungen) error {
+	// Gemessen wird immer eine Datei nach der anderen — mit allen Kernen,
+	// auch wenn für das Umwandeln parallelDateien eingestellt ist.
+	e.ParallelDateien = 1
 	dateien, err := VideoDateienSuchen(pfade, e)
 	if err != nil {
 		return err
@@ -454,7 +492,7 @@ func analyseAusgeben(ctx context.Context, pfade []string, e Einstellungen) error
 	ArbeitsresteEntfernen(e.ArbeitsOrdner)
 
 	anz.Zeile("\nAuto-CQ misst %d Datei(en). Ziel-VMAF %s, Anker CRF %d und %d.",
-		len(dateien), komma(e.ZielVMAF, 1), e.AnkerNiedrig, e.AnkerHoch)
+		len(dateien), vmafZielText(e), e.AnkerNiedrig, e.AnkerHoch)
 
 	for nummer, pfad := range dateien {
 		err := eineDateiAnalysieren(ctx, anz, nummer+1, len(dateien), pfad, e)
@@ -500,6 +538,9 @@ func eineDateiAnalysieren(ctx context.Context, anz *Anzeige, nummer, gesamt int,
 	anz.SchrittFertig(autoCQText(ergebnis))
 	if ergebnis.Hinweis != "" && (ergebnis.Gedeckelt || !ergebnis.ZielErreichbar || ergebnis.DeckelNichtEinhaltbar || ergebnis.AnteilQuelle <= 0) {
 		anz.Zeile("  Hinweis: %s", ergebnis.Hinweis)
+	}
+	if anschlag := crfAnschlagText(ergebnis, e); anschlag != "" {
+		anz.Zeile("  %s", anschlag)
 	}
 	// Dieselbe Entscheidung, die ein echter Lauf vor dem Umwandeln trifft —
 	// knapp an der Schwelle also mit Grössenprobe.

@@ -42,14 +42,16 @@ type Fenster struct {
 
 // Messung hält, was ein CRF-Wert an den Ausschnitten gebracht hat.
 type Messung struct {
-	CRF   int
-	VMAF  float64
-	Bytes int64
+	CRF    int
+	VMAF   float64 // der Wert, den die Suche mit dem Ziel vergleicht (VMAFWerte.Wert)
+	Mittel float64 // Mittelwert, nur fürs Protokoll
+	Bytes  int64
 }
 
 // MessBericht meldet den Verlauf der Suche: einmal, wenn eine Messung
-// beginnt (vmaf < 0), und einmal mit ihrem Ergebnis. nil ist erlaubt.
-type MessBericht func(crf int, vmaf float64)
+// beginnt (vmaf < 0), und einmal mit ihrem Ergebnis. mittel ist der
+// Mittelwert — beim Messen am Mittelwert gleich vmaf. nil ist erlaubt.
+type MessBericht func(crf int, vmaf, mittel float64)
 
 // AutoCQErgebnis ist das Urteil für eine Datei.
 type AutoCQErgebnis struct {
@@ -70,6 +72,52 @@ type AutoCQErgebnis struct {
 	// wird der Hinweis dann auch angezeigt (vorher sah man nur "115 % der
 	// Quelle" ohne Grund, 26.09.2026).
 	DeckelNichtEinhaltbar bool
+
+	// Perzentil sagt, woran gemessen wurde (vmafPerzentil): 0 = Mittelwert,
+	// sonst ist ErwarteterVMAF dieses untere Perzentil.
+	Perzentil int
+}
+
+// ErwarteterMittelwert ist der Mittelwert beim gewählten CRF — beim Messen
+// am Mittelwert dasselbe wie ErwarteterVMAF.
+func (a AutoCQErgebnis) ErwarteterMittelwert() float64 {
+	for _, m := range a.Messungen {
+		if m.CRF == a.CRF {
+			return m.Mittel
+		}
+	}
+	return a.ErwarteterVMAF
+}
+
+// vmafZiel ist die Untergrenze, die Auto-CQ hält — für den Wert, den
+// vmafPerzentil auswählt: das Perzentil-Ziel oder das Ziel für den Mittelwert.
+func vmafZiel(e Einstellungen) float64 {
+	if e.VMAFPerzentil > 0 {
+		return e.ZielVMAFPerzentil
+	}
+	return e.ZielVMAF
+}
+
+// crfAnschlagText meldet, wenn die Suche an eine Grenze ihres Bereichs stiess
+// (seit 0.19.0, Nutzerwunsch) — leer, wenn nicht. Zeigt es sich oft, lohnt es,
+// den Bereich in der INI anzupassen:
+//   - crfMax: Das Ziel hätte vielleicht einen noch höheren CRF erlaubt, die
+//     Datei wäre kleiner geworden.
+//   - crfMin: der beste erlaubte Wert.
+//   - ankerNiedrig: Tiefer als bis zum besseren Anker sucht Auto-CQ nie (siehe
+//     plateauWeg). Verfehlt schon er das Ziel, ist er die eigentliche untere
+//     Grenze — auch wenn crfMin darunter liegt.
+func crfAnschlagText(a AutoCQErgebnis, e Einstellungen) string {
+	switch {
+	case a.CRF >= e.CRFMax:
+		return fmt.Sprintf("CRF-Anschlag oben: gewaehlt CRF %d = crfMax - mit hoeherem crfMax waere die Datei evtl. noch kleiner geworden.", a.CRF)
+	case a.CRF <= e.CRFMin:
+		return fmt.Sprintf("CRF-Anschlag unten: gewaehlt CRF %d = crfMin.", a.CRF)
+	case !a.ZielErreichbar:
+		return fmt.Sprintf("CRF-Anschlag unten: schon ankerNiedrig (CRF %d) verfehlt das Ziel %s - tiefer sucht Auto-CQ nicht.",
+			e.AnkerNiedrig, komma(vmafZiel(e), 1))
+	}
+	return ""
 }
 
 // Um so viel darf die Gegenmessung ÜBER dem Ziel liegen, bevor eine Stufe
@@ -153,6 +201,7 @@ func CRFFinden(ctx context.Context, quelle string, info VideoInfo, arbeitsOrdner
 		quelleBytes: quelleBytes,
 	}
 	ergebnis, err := sucher.bestimmen()
+	ergebnis.Perzentil = e.VMAFPerzentil
 	if err == nil && quelleBytes <= 0 && e.KostenDeckelProzent > 0 {
 		ergebnis.Hinweis = strings.TrimSpace(ergebnis.Hinweis + " Quellgroesse an den Messstellen unbekannt - ohne Kosten-Deckel.")
 	}
@@ -174,25 +223,26 @@ func (s *crfSuche) bestimmen() (AutoCQErgebnis, error) {
 }
 
 // probeMessung kodiert die Messausschnitte mit einem CRF und misst sie.
-type probeMessung func(crf int) (vmaf float64, bytes int64, err error)
+type probeMessung func(crf int) (vmaf VMAFWerte, bytes int64, err error)
 
 // echteProbe misst mit ffmpeg an der Vergleichsdatei. breite und hoehe sind
 // die Masse des Ergebnisses (nach maxAufloesung) — danach richtet sich, ob für
-// die Messung vergrössert wird.
+// die Messung vergrössert wird. Die Probe bekommt nie Filmkorn (siehe
+// svtParameter), mit demselben Preset wie der finale Encode.
 func echteProbe(ctx context.Context, referenz, ordner string, breite, hoehe int, e Einstellungen) probeMessung {
-	return func(crf int) (float64, int64, error) {
+	return func(crf int) (VMAFWerte, int64, error) {
 		probe := filepath.Join(ordner, fmt.Sprintf("probe_crf%d.mkv", crf))
 		defer os.Remove(probe)
 
 		auftrag := EncodeAuftrag{Quelle: referenz, Ziel: probe, CRF: crf, NurVideo: true}
 		if err := Kodieren(ctx, auftrag, e, 0, nil); err != nil {
-			return 0, 0, err
+			return VMAFWerte{}, 0, err
 		}
-		wert, err := VMAFMessen(ctx, probe, referenz, breite, hoehe, e)
+		werte, err := VMAFMessen(ctx, probe, referenz, breite, hoehe, e)
 		if err != nil {
-			return 0, 0, err
+			return VMAFWerte{}, 0, err
 		}
-		return wert, DateiGroesse(probe), nil
+		return werte, DateiGroesse(probe), nil
 	}
 }
 
@@ -212,10 +262,15 @@ type crfSuche struct {
 	quelleBytes int64
 }
 
-func (s *crfSuche) melden(crf int, vmaf float64) {
+func (s *crfSuche) melden(crf int, vmaf, mittel float64) {
 	if s.bericht != nil {
-		s.bericht(crf, vmaf)
+		s.bericht(crf, vmaf, mittel)
 	}
+}
+
+// ziel ist die Untergrenze dieser Suche (vmafZiel).
+func (s *crfSuche) ziel() float64 {
+	return vmafZiel(s.e)
 }
 
 // messen kodiert die Ausschnitte mit einem CRF-Wert und misst die Qualität.
@@ -230,15 +285,15 @@ func (s *crfSuche) messen(crf int) (Messung, error) {
 		return Messung{}, errZuVieleMessungen
 	}
 
-	s.melden(crf, -1)
-	wert, bytes, err := s.probe(crf)
+	s.melden(crf, -1, -1)
+	werte, bytes, err := s.probe(crf)
 	if err != nil {
 		return Messung{}, err
 	}
 
-	m := Messung{CRF: crf, VMAF: wert, Bytes: bytes}
+	m := Messung{CRF: crf, VMAF: werte.Wert, Mittel: werte.Mittel, Bytes: bytes}
 	s.messungen = append(s.messungen, m)
-	s.melden(crf, wert)
+	s.melden(crf, werte.Wert, werte.Mittel)
 	return m, nil
 }
 
@@ -260,11 +315,11 @@ func (s *crfSuche) suchen() (AutoCQErgebnis, error) {
 	// Liegt schon der bessere Anker unter dem Ziel, ist das Ziel mit diesem
 	// Material nicht zu erreichen. Dann zählt nur noch, möglichst viel Platz
 	// zu sparen, ohne das Bild spürbar zu verschlechtern.
-	if niedrig.VMAF < s.e.ZielVMAF {
+	if niedrig.VMAF < s.ziel() {
 		return s.plateauWeg(niedrig, hoch)
 	}
 
-	gewaehlt := interpolieren(niedrig, hoch, s.e.ZielVMAF)
+	gewaehlt := interpolieren(niedrig, hoch, s.ziel())
 	gewaehlt = rundeAuf(gewaehlt, s.e.CRFMin, s.e.CRFMax)
 
 	gemessen, err := s.messen(gewaehlt)
@@ -273,13 +328,13 @@ func (s *crfSuche) suchen() (AutoCQErgebnis, error) {
 	}
 
 	switch {
-	case gemessen.VMAF < s.e.ZielVMAF:
+	case gemessen.VMAF < s.ziel():
 		// Das Ziel ist eine Untergrenze: so lange feiner nachmessen, bis ein
 		// Wert es hält.
-		if gemessen, err = s.einschachteln(s.e.ZielVMAF, gemessen); err != nil {
+		if gemessen, err = s.einschachteln(s.ziel(), gemessen); err != nil {
 			return AutoCQErgebnis{}, err
 		}
-	case gemessen.VMAF-s.e.ZielVMAF > gegenmessungToleranz:
+	case gemessen.VMAF-s.ziel() > gegenmessungToleranz:
 		// Deutlich besser als verlangt: einmal sparsamer versuchen. Mehr als
 		// eine Stufe lohnt nicht — jede kostet einen kompletten Probelauf.
 		if sparsamer, ok := s.sparsamerVersuchen(gemessen); ok {
@@ -374,10 +429,10 @@ func (s *crfSuche) sparsamerVersuchen(bisher Messung) (Messung, bool) {
 	}
 
 	neu, err := s.messen(naechster)
-	if err != nil || neu.VMAF < s.e.ZielVMAF {
+	if err != nil || neu.VMAF < s.ziel() {
 		return bisher, false
 	}
-	if abweichung(neu.VMAF, s.e.ZielVMAF) < abweichung(bisher.VMAF, s.e.ZielVMAF) {
+	if abweichung(neu.VMAF, s.ziel()) < abweichung(bisher.VMAF, s.ziel()) {
 		return neu, true
 	}
 	return bisher, false
@@ -412,7 +467,7 @@ func (s *crfSuche) plateauWeg(niedrig, hoch Messung) (AutoCQErgebnis, error) {
 	hinweis := fmt.Sprintf(
 		"Ziel %s ist mit diesem Material nicht erreichbar (bestenfalls %s bei CRF %d). "+
 			"Gewaehlt CRF %d mit %s — spart %.0f %% gegenueber dem besten Wert.",
-		komma(s.e.ZielVMAF, 1), komma(niedrig.VMAF, 1), niedrig.CRF,
+		komma(s.ziel(), 1), komma(niedrig.VMAF, 1), niedrig.CRF,
 		beste.CRF, komma(beste.VMAF, 1), ProzentKleiner(niedrig.Bytes, beste.Bytes))
 
 	return AutoCQErgebnis{
@@ -446,7 +501,7 @@ func (s *crfSuche) plateauRand(boden float64, niedrig, hoch Messung) (Messung, e
 
 func (s *crfSuche) hinweisZurWahl(gewaehlt Messung) string {
 	return fmt.Sprintf("CRF %d trifft %.2f (Ziel %.1f), aus %d Messungen.",
-		gewaehlt.CRF, gewaehlt.VMAF, s.e.ZielVMAF, len(s.messungen))
+		gewaehlt.CRF, gewaehlt.VMAF, s.ziel(), len(s.messungen))
 }
 
 // interpolieren rechnet aus zwei Messpunkten den CRF-Wert für das Ziel hoch.

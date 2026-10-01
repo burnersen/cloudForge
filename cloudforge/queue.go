@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -44,7 +45,8 @@ type Eintrag struct {
 	QuelleBytes   int64
 	ErgebnisBytes int64
 	CRF           int
-	VMAF          float64
+	VMAF          float64 // der gemessene Wert (Perzentil oder Mittelwert, vmafPerzentil)
+	VMAFMittel    float64 // der Mittelwert dazu (seit 0.19.0)
 	Meldung       string
 
 	// Für die Zeitschätzung und die Gesamtbilanz.
@@ -74,6 +76,11 @@ type Zustand struct {
 	Tempo []TempoProbe `json:"tempo"`
 
 	pfad string
+
+	// mu schützt beim Umwandeln mehrerer Dateien gleichzeitig (seit 0.19.0):
+	// Jede liest das Tempo für ihre Zeitschätzung, während eine fertige es
+	// schon ergänzt.
+	mu sync.Mutex
 }
 
 // TempoProbe ist eine gemessene Umwandlung: so viele Bilder und Bytes in so
@@ -212,6 +219,8 @@ func (z *Zustand) DateiFertig(eintrag Eintrag) error {
 	if eintrag.Status != StatusErledigt && eintrag.Status != StatusUmgepackt {
 		return nil
 	}
+	z.mu.Lock()
+	defer z.mu.Unlock()
 	z.GesamtDateien++
 	z.GesamtGespartBytes += eintrag.GespartBytes()
 	z.GesamtRechenSek += eintrag.RechenSek
@@ -259,6 +268,8 @@ var startErfahrung = Erfahrung{BilderProSek: 54, BytesProSek: 2.75e6}
 // Eine einzelne Datei, die wegen einer Netzstörung doppelt so lange brauchte,
 // soll die Schätzung nicht verbiegen.
 func (z *Zustand) Erfahrung() Erfahrung {
+	z.mu.Lock()
+	defer z.mu.Unlock()
 	var bilder, bytes []float64
 	for _, probe := range z.Tempo {
 		if probe.RechenSek <= 0 || probe.Bilder <= 0 || probe.QuelleBytes <= 0 {

@@ -50,12 +50,16 @@ func TestProbeKetteMitEchtemFFmpeg(t *testing.T) {
 	// Messung falsche Bilder oder liest den falschen Wert (NVENCForge-Lektion).
 	// 320x240 wird dafür seit 0.12.0 auf 1440x1080 vergrössert.
 	const breite, hoehe = 320, 240
-	selbst, err := VMAFMessen(ctx, referenz, referenz, breite, hoehe, e)
+	selbstWerte, err := VMAFMessen(ctx, referenz, referenz, breite, hoehe, e)
 	if err != nil {
 		t.Fatalf("VMAF gegen sich selbst: %v", err)
 	}
+	selbst := selbstWerte.Wert // das 5-%-Perzentil (Werkseinstellung)
 	if selbst < 99 {
 		t.Errorf("gegen sich selbst gemessen %.2f, erwartet fast 100", selbst)
+	}
+	if _, err := os.Stat(filepath.Join(ordner, vmafProtokollName)); !os.IsNotExist(err) {
+		t.Errorf("das VMAF-Protokoll muss nach der Messung weg sein (%v)", err)
 	}
 
 	probe := filepath.Join(ordner, "probe.mkv")
@@ -63,21 +67,26 @@ func TestProbeKetteMitEchtemFFmpeg(t *testing.T) {
 	if err := Kodieren(ctx, auftrag, e, 0, nil); err != nil {
 		t.Fatalf("Kodieren mit Variance Boost und tune 0: %v", err)
 	}
-	wert, err := VMAFMessen(ctx, probe, referenz, breite, hoehe, e)
+	probeWerte, err := VMAFMessen(ctx, probe, referenz, breite, hoehe, e)
 	if err != nil {
 		t.Fatalf("VMAF der Probe: %v", err)
 	}
+	wert := probeWerte.Wert
 	if wert <= 20 || wert >= selbst {
 		t.Errorf("VMAF der Probe %.2f ist unplausibel (gegen sich selbst %.2f)", wert, selbst)
+	}
+	if probeWerte.Mittel < wert {
+		t.Errorf("der Mittelwert %.2f kann nicht unter dem 5-%%-Perzentil %.2f liegen", probeWerte.Mittel, wert)
 	}
 
 	// Vergrössert fallen die Kodierfehler stärker auf. In eigener Grösse
 	// gemessen (Masse unbekannt = nicht vergrössern) muss der Wert also höher
 	// liegen — genau das war bis 0.11.x die Täuschung bei kleinen Videos.
-	eigeneGroesse, err := VMAFMessen(ctx, probe, referenz, 0, 0, e)
+	eigeneWerte, err := VMAFMessen(ctx, probe, referenz, 0, 0, e)
 	if err != nil {
 		t.Fatalf("VMAF in eigener Grösse: %v", err)
 	}
+	eigeneGroesse := eigeneWerte.Wert
 	if wert >= eigeneGroesse {
 		t.Errorf("vergrössert gemessen %.2f, in eigener Grösse %.2f - vergrössert muss strenger sein",
 			wert, eigeneGroesse)
@@ -97,12 +106,15 @@ func TestSvtNimmtAlleParameterAn(t *testing.T) {
 	e.VarianceBoost, e.Tune0 = true, true
 	// Vom SVT-Werk (2/5) abweichend, damit die Übernahme sichtbar wird.
 	e.VarianceBoostStaerke, e.VarianceOktil = 3, 7
+	e.FilmKorn = 8 // seit 0.19.0, nur im finalen Encode
 
 	args := []string{"-hide_banner", "-nostdin",
 		"-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=1"}
-	args = append(args, videoArgumente(40, e)...)
+	args = append(args, videoArgumente(40, e, true)...)
 	args = append(args, "-f", "null", "-")
-	ausgabe, err := exec.Command(ffmpeg, args...).CombinedOutput()
+	befehl := exec.Command(ffmpeg, args...)
+	befehl.Env = append(os.Environ(), "SVT_LOG=3") // die SVT-Übersicht auch dann, wenn jemand sie abgestellt hat
+	ausgabe, err := befehl.CombinedOutput()
 	if err != nil {
 		t.Fatalf("ffmpeg: %v (%s)", err, ausgabe)
 	}
@@ -111,13 +123,37 @@ func TestSvtNimmtAlleParameterAn(t *testing.T) {
 	}
 
 	// SVT-AV1 4.2 nennt die Werte in seiner Übersicht:
-	// "AQ mode / Variance Boost strength / octile / curve : 2 / 3 / 7 / 0".
-	// Eine spätere Fassung darf die Zeile anders schreiben — dann bleibt es
+	// "AQ mode / Variance Boost strength / octile / curve : 2 / 3 / 7 / 0" und
+	// "film grain synth / denoising / level / adaptive blocksize : 1 / 0 / 8 / True".
+	// Eine spätere Fassung darf die Zeilen anders schreiben — dann bleibt es
 	// bei der Prüfung oben.
 	for _, zeile := range strings.Split(string(ausgabe), "\n") {
 		if strings.Contains(zeile, "Variance Boost strength / octile") && !strings.Contains(zeile, "/ 3 / 7") {
 			t.Errorf("Staerke 3 / Oktil 7 kamen nicht an: %s", zeile)
 		}
+		if strings.Contains(zeile, "film grain synth / denoising / level") && !strings.Contains(zeile, ": 1 / 0 / 8") {
+			t.Errorf("Filmkorn 8 ohne Entrauschen kam nicht an: %s", zeile)
+		}
+	}
+}
+
+// Die Messproben bekommen nie Filmkorn — nur der finale Encode.
+func TestFilmKornNurImFinalenEncode(t *testing.T) {
+	e := standardWerte()
+	e.FilmKorn = 8
+
+	probe := strings.Join(EncodeArgumente(EncodeAuftrag{Quelle: "q.mkv", Ziel: "p.mkv", CRF: 30, NurVideo: true}, e), " ")
+	if strings.Contains(probe, "film-grain") {
+		t.Errorf("Messprobe mit Filmkorn: %s", probe)
+	}
+	final := strings.Join(EncodeArgumente(EncodeAuftrag{Quelle: "q.mkv", Ziel: "e.mkv", CRF: 30, MitFilmKorn: true}, e), " ")
+	if !strings.Contains(final, ":film-grain=8:film-grain-denoise=0") {
+		t.Errorf("finaler Encode ohne Filmkorn: %s", final)
+	}
+
+	e.FilmKorn = 0
+	if aus := strings.Join(EncodeArgumente(EncodeAuftrag{Quelle: "q.mkv", Ziel: "e.mkv", CRF: 30, MitFilmKorn: true}, e), " "); strings.Contains(aus, "film-grain") {
+		t.Errorf("filmKorn=0 heisst aus: %s", aus)
 	}
 }
 

@@ -90,7 +90,10 @@ func TestAnzeigeSchreibtInsProtokoll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &Anzeige{} // wie in einer Logdatei: keine Übersicht, kein Terminal
+	// Wie in einer Logdatei: keine Übersicht, kein Terminal.
+	kern := &anzeigeKern{}
+	a := &Anzeige{anzeigeKern: kern, platz: &platz{}}
+	kern.plaetze = []*platz{a.platz}
 	a.ProtokollSetzen(p)
 
 	a.Datei(1, 2, "Film.mp4")
@@ -99,7 +102,8 @@ func TestAnzeigeSchreibtInsProtokoll(t *testing.T) {
 		a.Stand(Stand{Anteil: anteil})
 	}
 	a.SchrittFertig("1,2 GB statt 2,4 GB")
-	a.Messung(20, 98.21)
+	a.Messung(20, 98.21, 98.21)
+	a.Messung(22, 93.1, 96.4) // am Perzentil gemessen: der Mittelwert steht dabei
 	p.Schliessen()
 
 	inhalt, err := os.ReadFile(filepath.Join(ordner, time.Now().Format(protokollDatumFormat)+".txt"))
@@ -107,7 +111,8 @@ func TestAnzeigeSchreibtInsProtokoll(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(inhalt)
-	for _, teil := range []string{"[1/2] Film.mp4", "3/5 Umwandeln ...", " 12 %", " 55 %", "100 %", "1,2 GB statt 2,4 GB", "CRF 20 ergibt VMAF 98,21"} {
+	for _, teil := range []string{"[1/2] Film.mp4", "3/5 Umwandeln ...", " 12 %", " 55 %", "100 %", "1,2 GB statt 2,4 GB",
+		"CRF 20 ergibt VMAF 98,21\n", "CRF 22 ergibt VMAF 93,10 (Mittel 96,40)"} {
 		if !strings.Contains(text, teil) {
 			t.Errorf("%q fehlt im Protokoll:\n%s", teil, text)
 		}

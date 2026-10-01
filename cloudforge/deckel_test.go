@@ -37,9 +37,9 @@ func linear(punkte map[int]float64, crf int) float64 {
 // quellKurve baut eine Probemessung mit VMAF aus Stützpunkten und einer
 // Grösse, die je CRF-Stufe um einen festen Faktor fällt — wie gemessen.
 func quellKurve(vmaf map[int]float64, anteilBei19, faktorJeStufe float64) probeMessung {
-	return func(crf int) (float64, int64, error) {
+	return func(crf int) (VMAFWerte, int64, error) {
 		anteil := anteilBei19 * math.Pow(faktorJeStufe, float64(crf-19))
-		return linear(vmaf, crf), int64(anteil * quelleTestBytes), nil
+		return mittelwert(linear(vmaf, crf)), int64(anteil * quelleTestBytes), nil
 	}
 }
 
@@ -54,7 +54,8 @@ func deckelSuche(probe probeMessung, deckel float64) *crfSuche {
 	// Fest, nicht die Werkswerte: die Erwartungen unten sind für Ziel 97 und
 	// Anker 16/26 gerechnet (mit dem Werkswert 96 seit 0.11.3 fiel
 	// TestDeckelAusOderQuelleUnbekannt; seit 0.15.0 sind die Werksanker 22/32).
-	e.ZielVMAF = 97
+	// Die Kurven sind Mittelwerte, deshalb wird auch am Mittelwert gemessen.
+	e.VMAFPerzentil, e.ZielVMAF = 0, 97
 	e.AnkerNiedrig, e.AnkerHoch = 16, 26
 	e.KostenDeckelProzent = deckel
 	return &crfSuche{ctx: context.Background(), e: e, probe: probe, quelleBytes: quelleTestBytes}
@@ -87,13 +88,13 @@ func TestDeckelFindetBestenCRFAuchNachWeitemSprung(t *testing.T) {
 	// aus den flachen Punkten schiesst deshalb weit über das Ziel hinaus
 	// (bis crfMax). Danach muss eingegrenzt werden — auf den BESTEN CRF unter
 	// dem Deckel, nicht auf den sparsamsten.
-	knick := func(crf int) (float64, int64, error) {
+	knick := func(crf int) (VMAFWerte, int64, error) {
 		anteil := 1.2 * math.Pow(0.97, float64(min(crf, 26)-19))
 		if crf > 26 {
 			anteil *= math.Pow(0.8, float64(crf-26))
 		}
 		vmaf := linear(map[int]float64{16: 98.6, 19: 97.9, 26: 96.0, 44: 80.0}, crf)
-		return vmaf, int64(anteil * quelleTestBytes), nil
+		return mittelwert(vmaf), int64(anteil * quelleTestBytes), nil
 	}
 	erg, err := deckelSuche(knick, 50).bestimmen()
 	if err != nil {

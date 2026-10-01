@@ -57,28 +57,65 @@ const (
 // Anzeige gibt den Verlauf aus — auf einem Terminal mit einem Balken, der sich
 // selbst überschreibt, in einer Logdatei mit ruhigen ganzen Zeilen.
 //
+// Seit 0.19.0 können mehrere Dateien gleichzeitig laufen (parallelDateien).
+// Jede bekommt dann ihren eigenen Platz (NeuerPlatz): eine Anzeige mit eigenem
+// Schritt, Fortschritt und eigenen Zeilen, die sich Terminal, Übersicht und
+// Protokoll mit den anderen teilt. Mit nur einem Platz sieht alles genau so
+// aus wie vorher.
+//
 // Alle Methoden sind gegen gleichzeitigen Aufruf gesichert: Die Übersicht wird
 // zusätzlich im Sekundentakt und bei jeder Größenänderung des Fensters aus
-// einer eigenen Goroutine neu gezeichnet.
+// einer eigenen Goroutine neu gezeichnet, und jeder Platz meldet aus seiner
+// eigenen Goroutine.
 type Anzeige struct {
+	*anzeigeKern
+	*platz
+}
+
+// anzeigeKern ist, was sich alle Plätze teilen. Sein Mutex schützt auch die
+// Plätze.
+type anzeigeKern struct {
 	mu         sync.Mutex
 	amTerminal bool
-
-	datei         string // "Datei 2/5", steht im Fenstertitel
-	schritt       string // "3/5 Umwandeln"
-	schrittName   string // "Umwandeln"
-	schrittLaeuft bool
-	beginn        time.Time
-	zeileOffen    bool
-	letztesMal    time.Time
-	letzteStufe   int
-	messungen     []string
+	zeileOffen bool
 
 	uebersicht *uebersicht // nil, solange keine Übersicht offen ist
 
 	// Seit 0.9.0 schreibt jede Anzeige zusätzlich ins Protokoll (nil = nicht).
-	protokoll      *Protokoll
+	protokoll *Protokoll
+
+	plaetze  []*platz // in der Reihenfolge, in der sie angelegt wurden
+	parallel int      // so viele Dateien laufen höchstens gleichzeitig (Plaetze), 0 = eine
+}
+
+// platz ist alles, was zu genau einer laufenden Datei gehört.
+type platz struct {
+	datei          string // "Datei 2/5", steht im Fenstertitel
+	schritt        string // "3/5 Umwandeln"
+	schrittName    string // "Umwandeln"
+	schrittLaeuft  bool
+	beginn         time.Time
+	letztesMal     time.Time
+	letzteStufe    int
 	protokollStufe int
+	messungen      []string
+
+	// vorsilbe steht vor jeder Protokollzeile, sobald mehrere Plätze
+	// arbeiten — sonst wüsste man nicht, zu welcher Datei sie gehört.
+	vorsilbe string
+
+	// Für die Übersicht (bildschirm.go).
+	dateiNummer     int
+	dateiName       string // leer = dieser Platz hat gerade keine Datei
+	dateiBeginn     time.Time
+	dateiZeilen     []string // Info-Zeile und fertige Schritte der laufenden Datei
+	stand           Stand
+	standDa         bool
+	umwandelnVorbei bool    // die Datei ist schon hinter dem Umwandeln
+	laufendeMessung int     // CRF der gerade laufenden Messung, 0 = keine
+	prognoseBytes   float64 // geglättete Hochrechnung der Ergebnisgrösse
+	quelleBytes     int64
+	dateiSchaetzung time.Duration // für die ganze laufende Datei
 }
 
 // ProtokollSetzen lässt alles, was die Anzeige ausgibt, auch ins Protokoll
@@ -92,12 +129,67 @@ func (a *Anzeige) ProtokollSetzen(p *Protokoll) {
 // protokolliere schreibt ins Protokoll, falls eines gesetzt ist. Der
 // Aufrufer hält a.mu.
 func (a *Anzeige) protokolliere(text string) {
-	a.protokoll.Zeile(text)
+	a.protokoll.Zeile(a.mitVorsilbe(text))
+}
+
+// mitVorsilbe stellt die Dateinummer vor eine Zeile, wenn mehrere Dateien
+// gleichzeitig laufen. Leerzeilen gliedern nur und bleiben leer.
+func (a *Anzeige) mitVorsilbe(text string) string {
+	if a.vorsilbe == "" {
+		return text
+	}
+	zeilen := strings.Split(text, "\n")
+	for i, zeile := range zeilen {
+		if strings.TrimSpace(zeile) != "" {
+			zeilen[i] = a.vorsilbe + zeile
+		}
+	}
+	return strings.Join(zeilen, "\n")
+}
+
+// mehrerePlaetze sagt, ob mehrere Dateien gleichzeitig laufen können.
+func (a *Anzeige) mehrerePlaetze() bool {
+	return a.parallel > 1
 }
 
 // NeueAnzeige prüft einmal, wohin geschrieben wird, und richtet sich danach.
 func NeueAnzeige() *Anzeige {
-	return &Anzeige{amTerminal: schreibtAufTerminal()}
+	kern := &anzeigeKern{amTerminal: schreibtAufTerminal()}
+	p := &platz{}
+	kern.plaetze = []*platz{p}
+	return &Anzeige{anzeigeKern: kern, platz: p}
+}
+
+// Plaetze liefert die Anzeigen für anzahl gleichzeitig laufende Dateien. Bei
+// einer ist das diese Anzeige selbst — dann ändert sich nichts. Bei mehreren
+// bekommt jede einen eigenen Platz; der dieser Anzeige bleibt für Meldungen,
+// die zu keiner Datei gehören.
+func (a *Anzeige) Plaetze(anzahl int) []*Anzeige {
+	if anzahl <= 1 {
+		return []*Anzeige{a}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.parallel = anzahl
+	anzeigen := make([]*Anzeige, anzahl)
+	for i := range anzeigen {
+		p := &platz{}
+		a.plaetze = append(a.plaetze, p)
+		anzeigen[i] = &Anzeige{anzeigeKern: a.anzeigeKern, platz: p}
+	}
+	return anzeigen
+}
+
+// PlatzFrei meldet, dass dieser Platz keine Datei mehr bearbeitet. Die
+// Übersicht zeigt ihn dann nicht mehr.
+func (a *Anzeige) PlatzFrei() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.dateiName, a.schrittLaeuft, a.dateiZeilen = "", false, nil
+	if a.uebersicht != nil {
+		a.uebersichtZeichnen()
+	}
 }
 
 // Datei kündigt die nächste Datei an.
@@ -105,18 +197,24 @@ func (a *Anzeige) Datei(nummer, gesamt int, name string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	kopf := fmt.Sprintf("[%d/%d] %s", nummer, gesamt, name)
 	a.datei = fmt.Sprintf("Datei %d/%d", nummer, gesamt)
+	if a.mehrerePlaetze() {
+		a.vorsilbe = fmt.Sprintf("[%d/%d] ", nummer, gesamt)
+	}
 	a.schrittLaeuft = false
 	a.titel(a.datei)
-	a.protokolliere(fmt.Sprintf("[%d/%d] %s", nummer, gesamt, name))
+	a.protokoll.Zeile(kopf) // nennt die Nummer schon selbst
+	a.platz.neueDatei(nummer, name)
 
 	if u := a.uebersicht; u != nil {
-		u.neueDatei(nummer, gesamt, name)
+		u.dateiGesamt = gesamt
+		u.protokoll = append(u.protokoll, "", kopf)
 		a.uebersichtZeichnen()
 		return
 	}
 	a.zeileSchliessen()
-	fmt.Printf("\n[%d/%d] %s\n", nummer, gesamt, name)
+	fmt.Printf("\n%s\n", kopf)
 }
 
 // Schritt beginnt einen neuen Arbeitsschritt.
@@ -136,14 +234,14 @@ func (a *Anzeige) Schritt(nummer, gesamt int, name string) {
 	a.titel(fmt.Sprintf("%s - %s", a.schrittName, a.datei))
 	a.protokolliere(fmt.Sprintf("  %s ...", a.schritt))
 
+	a.platz.neuerSchritt()
 	switch {
 	case a.uebersicht != nil:
-		a.uebersicht.neuerSchritt()
 		a.uebersichtZeichnen()
 	case a.amTerminal:
 		a.zeichnen("...")
 	default:
-		fmt.Printf("  %s ...\n", a.schritt)
+		fmt.Println(a.mitVorsilbe(fmt.Sprintf("  %s ...", a.schritt)))
 	}
 }
 
@@ -162,8 +260,8 @@ func (a *Anzeige) Stand(s Stand) {
 
 	if a.amTerminal {
 		fertig := s.Anteil >= 1
-		if u := a.uebersicht; u != nil {
-			u.standMerken(s) // auch ungezeichnet merken, sonst zappelt die Prognose
+		if a.uebersicht != nil {
+			a.platz.standMerken(s) // auch ungezeichnet merken, sonst zappelt die Prognose
 		}
 		if !fertig && time.Since(a.letztesMal) < neuZeichnenAlle {
 			return
@@ -180,20 +278,23 @@ func (a *Anzeige) Stand(s Stand) {
 
 	if stufe := prozent / logStufeProzent; stufe > a.letzteStufe {
 		a.letzteStufe = stufe
-		fmt.Printf("      %s\n", standText(s))
+		fmt.Println(a.mitVorsilbe("      " + standText(s)))
 	}
 }
 
 // Messung meldet eine Qualitätsmessung von Auto-CQ. Ein negativer VMAF-Wert
-// heisst: die Messung beginnt gerade.
-func (a *Anzeige) Messung(crf int, vmaf float64) {
+// heisst: die Messung beginnt gerade. mittel ist der Mittelwert; weicht er
+// vom gemessenen Wert ab (Messen am Perzentil, seit 0.19.0), nennt ihn das
+// Protokoll dazu — die Übersicht bleibt beim entscheidenden Wert, sonst
+// passen die Messungen nicht mehr in eine Zeile.
+func (a *Anzeige) Messung(crf int, vmaf, mittel float64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	if vmaf < 0 {
 		switch {
 		case a.uebersicht != nil:
-			a.uebersicht.laufendeMessung = crf
+			a.laufendeMessung = crf
 			a.uebersichtZeichnen()
 		case a.amTerminal:
 			laufend := fmt.Sprintf("misst CRF %d ...", crf)
@@ -203,15 +304,19 @@ func (a *Anzeige) Messung(crf int, vmaf float64) {
 	}
 
 	a.messungen = append(a.messungen, fmt.Sprintf("CRF %d = %s", crf, komma(vmaf, 1)))
-	a.protokolliere(fmt.Sprintf("      CRF %d ergibt VMAF %s", crf, komma(vmaf, 2)))
+	zeile := fmt.Sprintf("      CRF %d ergibt VMAF %s", crf, komma(vmaf, 2))
+	if mittel != vmaf {
+		zeile += fmt.Sprintf(" (Mittel %s)", komma(mittel, 2))
+	}
+	a.protokolliere(zeile)
 	switch {
 	case a.uebersicht != nil:
-		a.uebersicht.laufendeMessung = 0
+		a.laufendeMessung = 0
 		a.uebersichtZeichnen()
 	case a.amTerminal:
 		a.zeichnen(strings.Join(a.messungen, "   "))
 	default:
-		fmt.Printf("      CRF %d ergibt VMAF %s\n", crf, komma(vmaf, 2))
+		fmt.Println(a.mitVorsilbe(zeile))
 	}
 }
 
@@ -226,13 +331,13 @@ func (a *Anzeige) SchrittFertig(ergebnis string) {
 
 	switch {
 	case a.uebersicht != nil:
-		a.uebersicht.dateiZeile(fmt.Sprintf("  %-*s %s", schrittSpalte, a.schritt, text))
+		a.dateiZeile(fmt.Sprintf("  %-*s %s", schrittSpalte, a.schritt, text))
 		a.uebersichtZeichnen()
 	case a.amTerminal:
 		a.zeichnen(text)
 		a.zeileSchliessen()
 	default:
-		fmt.Printf("      %s\n", text)
+		fmt.Println(a.mitVorsilbe("      " + text))
 	}
 }
 
@@ -244,15 +349,15 @@ func (a *Anzeige) Zeile(format string, werte ...any) {
 
 	text := fmt.Sprintf(format, werte...)
 	a.protokolliere(text)
-	if u := a.uebersicht; u != nil {
+	if a.uebersicht != nil {
 		for _, zeile := range strings.Split(text, "\n") {
-			u.dateiZeile(zeile)
+			a.dateiZeile(zeile)
 		}
 		a.uebersichtZeichnen()
 		return
 	}
 	a.zeileSchliessen()
-	fmt.Println(text)
+	fmt.Println(a.mitVorsilbe(text))
 }
 
 // Titel setzt den Fenstertitel. Er steht auch in der Taskleiste — so sieht
@@ -263,8 +368,10 @@ func (a *Anzeige) Titel(text string) {
 	a.titel(text)
 }
 
+// titel setzt den Fenstertitel. Laufen mehrere Dateien gleichzeitig, bleibt
+// er stehen: Jede würde ihn sonst im Viertelsekundentakt an sich reissen.
 func (a *Anzeige) titel(text string) {
-	if a.amTerminal {
+	if a.amTerminal && !a.mehrerePlaetze() {
 		fmt.Printf("\033]0;CloudForge - %s\007", text)
 	}
 }

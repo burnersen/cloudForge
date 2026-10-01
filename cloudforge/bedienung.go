@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -147,8 +148,33 @@ func laufSperren(ctx context.Context, e Einstellungen, anz *Anzeige) (func(), er
 // aus, und SVT-AV1 schreibt sie nicht in die Datei — so lässt sich später
 // jede Datei ihrer Einstellung zuordnen.
 func einstellungenText(e Einstellungen) string {
-	return fmt.Sprintf("Ziel-VMAF %s, Preset %d, %d Bit, Variance Boost %s, tune 0 %s",
-		komma(e.ZielVMAF, 1), e.Preset, e.Bittiefe, varianceBoostText(e), anAus(e.Tune0))
+	return fmt.Sprintf("Ziel-VMAF %s, Preset %d, %d Bit, Variance Boost %s, tune 0 %s, Filmkorn %s, %s gleichzeitig",
+		vmafZielText(e), e.Preset, e.Bittiefe, varianceBoostText(e), anAus(e.Tune0),
+		filmKornText(e), dateienText(max(e.ParallelDateien, 1)))
+}
+
+// vmafZielText nennt das Ziel zusammen mit dem Wert, an dem gemessen wird
+// (seit 0.19.0) — "93,0" allein liesse sich nicht mit den Läufen davor
+// vergleichen, die am Mittelwert gemessen haben.
+func vmafZielText(e Einstellungen) string {
+	if e.VMAFPerzentil > 0 {
+		return fmt.Sprintf("%s (%d-%%-Perzentil)", komma(vmafZiel(e), 1), e.VMAFPerzentil)
+	}
+	return komma(e.ZielVMAF, 1) + " (Mittelwert)"
+}
+
+func filmKornText(e Einstellungen) string {
+	if e.FilmKorn <= 0 {
+		return "aus"
+	}
+	return strconv.Itoa(e.FilmKorn)
+}
+
+func dateienText(anzahl int) string {
+	if anzahl == 1 {
+		return "1 Datei"
+	}
+	return fmt.Sprintf("%d Dateien", anzahl)
 }
 
 // varianceBoostText nennt die Feinregler nur, wenn sie auch wirken.

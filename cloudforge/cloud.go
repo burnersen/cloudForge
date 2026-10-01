@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -278,6 +279,64 @@ func PlatzPruefen(arbeitsOrdner string, gebrauchtBytes int64, e Einstellungen) e
 			gigabyte(frei), gigabyte(gebraucht), e.PlatzReserveGB)
 	}
 	return nil
+}
+
+// Platzbuch merkt sich, wie viel Platz die gleichzeitig laufenden Dateien
+// noch brauchen (seit 0.19.0, parallelDateien). Ohne das sähen zwei Dateien
+// beim Start denselben freien Platz und füllten zusammen die Platte. Was eine
+// Datei schon heruntergeladen hat, zählt dabei doppelt — einmal als belegt,
+// einmal als vorgemerkt. Das ist Absicht: lieber etwas warten als die Platte
+// volllaufen lassen.
+type Platzbuch struct {
+	mu         sync.Mutex
+	vorgemerkt int64
+	frei       chan struct{} // wird geschlossen, sobald eine Vormerkung zurückkommt
+}
+
+// NeuesPlatzbuch beginnt ohne Vormerkungen.
+func NeuesPlatzbuch() *Platzbuch {
+	return &Platzbuch{frei: make(chan struct{})}
+}
+
+// Vormerken wartet, bis bytes zusätzlich zu allen Vormerkungen frei sind.
+// Reicht der Platz schon ohne fremde Vormerkungen nicht, ist das ein Fehler
+// wie bisher — Warten hilft dann nicht. warten wird einmal aufgerufen, bevor
+// das erste Mal gewartet wird (für eine Meldung).
+func (b *Platzbuch) Vormerken(ctx context.Context, ordner string, bytes int64, e Einstellungen, warten func()) (freigeben func(), err error) {
+	gemeldet := false
+	for {
+		b.mu.Lock()
+		err := PlatzPruefen(ordner, bytes+b.vorgemerkt, e)
+		if err == nil {
+			b.vorgemerkt += bytes
+			b.mu.Unlock()
+			return sync.OnceFunc(func() { b.zurueckgeben(bytes) }), nil
+		}
+		if b.vorgemerkt == 0 {
+			b.mu.Unlock()
+			return nil, err
+		}
+		naechsteFreigabe := b.frei
+		b.mu.Unlock()
+
+		if !gemeldet && warten != nil {
+			warten()
+			gemeldet = true
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ErrAbgebrochen
+		case <-naechsteFreigabe:
+		}
+	}
+}
+
+func (b *Platzbuch) zurueckgeben(bytes int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.vorgemerkt -= bytes
+	close(b.frei) // weckt alle Wartenden, jeder prüft neu
+	b.frei = make(chan struct{})
 }
 
 func gigabyte(bytes int64) float64 {

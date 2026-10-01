@@ -56,62 +56,53 @@ const (
 	mebibyte        = 1024 * 1024
 )
 
-// uebersicht hält alles, was die Fläche zeigt, zwischen zwei Zeichnungen fest.
+// uebersicht hält fest, was die Fläche über alle Dateien hinweg zeigt. Was
+// zu einer laufenden Datei gehört, steht in deren platz (anzeige.go).
 // Geschützt über den Mutex der Anzeige.
 type uebersicht struct {
-	dateiNummer int
 	dateiGesamt int
-	dateiName   string
-	dateiBeginn time.Time
-	dateiZeilen []string // Info-Zeile und fertige Schritte der laufenden Datei
+	fertig      int      // abgeschlossene Dateien, für die Gesamtzeile bei mehreren Plätzen
 	verlauf     []string // je fertige Datei eine Zeile
 	protokoll   []string // wird nach dem Schliessen als Text ausgegeben
 
-	stand            Stand
-	standDa          bool
-	umwandelnVorbei  bool    // die Datei ist schon hinter dem Umwandeln
-	laufendeMessung  int     // CRF der gerade laufenden Messung, 0 = keine
-	prognoseBytes    float64 // geglättete Hochrechnung der Ergebnisgrösse
-	quelleBytes      int64
-	dateiSchaetzung  time.Duration // für die ganze laufende Datei
-	danachSchaetzung time.Duration // für alle Dateien nach dieser
+	danachSchaetzung time.Duration // für alle Dateien, die noch nicht angefangen sind
 
 	stopp   chan struct{}
 	beendet chan struct{}
 }
 
-func (u *uebersicht) neueDatei(nummer, gesamt int, name string) {
-	u.dateiNummer, u.dateiGesamt, u.dateiName = nummer, gesamt, name
-	u.dateiBeginn = time.Now()
-	u.dateiZeilen = nil
-	u.quelleBytes, u.dateiSchaetzung = 0, 0
-	u.umwandelnVorbei = false
-	u.neuerSchritt()
-	u.protokoll = append(u.protokoll, "", fmt.Sprintf("[%d/%d] %s", nummer, gesamt, name))
+func (p *platz) neueDatei(nummer int, name string) {
+	p.dateiNummer, p.dateiName = nummer, name
+	p.dateiBeginn = time.Now()
+	p.dateiZeilen = nil
+	p.quelleBytes, p.dateiSchaetzung = 0, 0
+	p.umwandelnVorbei = false
+	p.neuerSchritt()
 }
 
-func (u *uebersicht) neuerSchritt() {
-	if u.standDa && istUmwandeln(u.stand) {
-		u.umwandelnVorbei = true
+func (p *platz) neuerSchritt() {
+	if p.standDa && istUmwandeln(p.stand) {
+		p.umwandelnVorbei = true
 	}
-	u.stand, u.standDa = Stand{}, false
-	u.laufendeMessung = 0
-	u.prognoseBytes = 0
+	p.stand, p.standDa = Stand{}, false
+	p.laufendeMessung = 0
+	p.prognoseBytes = 0
 }
 
-func (u *uebersicht) standMerken(s Stand) {
-	u.stand, u.standDa = s, true
+func (p *platz) standMerken(s Stand) {
+	p.stand, p.standDa = s, true
 	if s.Bytes > 0 && s.Anteil >= 0.01 {
-		u.prognoseBytes = glaettePrognose(u.prognoseBytes, float64(s.Bytes)/s.Anteil, s.Anteil)
+		p.prognoseBytes = glaettePrognose(p.prognoseBytes, float64(s.Bytes)/s.Anteil, s.Anteil)
 	}
 }
 
 // dateiZeile nimmt eine Zeile in den Block der laufenden Datei und ins
-// Protokoll auf. Leerzeilen gliedern nur das Protokoll.
-func (u *uebersicht) dateiZeile(zeile string) {
-	u.protokoll = append(u.protokoll, zeile)
-	if u.dateiName != "" && strings.TrimSpace(zeile) != "" {
-		u.dateiZeilen = append(u.dateiZeilen, zeile)
+// Protokoll der Übersicht auf. Leerzeilen gliedern nur das Protokoll. Der
+// Aufrufer hält a.mu, die Übersicht ist offen.
+func (a *Anzeige) dateiZeile(zeile string) {
+	a.uebersicht.protokoll = append(a.uebersicht.protokoll, a.mitVorsilbe(zeile))
+	if a.dateiName != "" && strings.TrimSpace(zeile) != "" {
+		a.dateiZeilen = append(a.dateiZeilen, zeile)
 	}
 }
 
@@ -195,12 +186,11 @@ func (a *Anzeige) UebersichtSchliessen() {
 func (a *Anzeige) DateiInfo(quelleBytes int64, geschaetzt time.Duration) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if u := a.uebersicht; u != nil {
-		u.quelleBytes, u.dateiSchaetzung = quelleBytes, geschaetzt
-	}
+	a.quelleBytes, a.dateiSchaetzung = quelleBytes, geschaetzt
 }
 
-// Warteschlange nennt die geschätzte Dauer aller Dateien nach der laufenden.
+// Warteschlange nennt die geschätzte Dauer aller Dateien, die noch nicht
+// angefangen sind.
 func (a *Anzeige) Warteschlange(danach time.Duration) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -231,7 +221,8 @@ func (a *Anzeige) DateiAbgeschlossen(status, kurz string) {
 	default:
 		marke = farbeRot + "FEHLER" + farbeAus
 	}
-	u.verlauf = append(u.verlauf, fmt.Sprintf(" %s %s  %s", marke, u.dateiName, kurz))
+	u.verlauf = append(u.verlauf, fmt.Sprintf(" %s %s  %s", marke, a.dateiName, kurz))
+	u.fertig++
 	a.uebersichtZeichnen()
 }
 
@@ -260,40 +251,58 @@ func (a *Anzeige) uebersichtZeichnen() {
 // Passt nicht alles hinein, fällt zuerst der Verlauf der fertigen Dateien weg
 // (die neuesten bleiben), dann die ältesten Zeilen der laufenden Datei. Der
 // Fortschritt bleibt immer sichtbar.
+//
+// Laufen mehrere Dateien gleichzeitig (seit 0.19.0), steht jede mit Kopf,
+// Zeilen und Fortschritt untereinander; den freien Platz für ihre Zeilen
+// teilen sie sich gleichmässig. Die Gesamtzeile steht dann einmal darunter.
 func (a *Anzeige) uebersichtZeilen(breite, hoehe int, jetzt time.Time) []string {
 	u := a.uebersicht
+	laufend := a.laufendePlaetze()
 
 	kopf := []string{
-		kopfZeile(breite, u),
+		kopfZeile(breite, a.kopfRechts(laufend)),
 		farbeGrau + " " + strings.Repeat("-", max(breite-3, 1)) + farbeAus,
 	}
 
-	var dateiKopf, dateiZeilen []string
-	if u.dateiName != "" {
-		dateiKopf = []string{fmt.Sprintf(" %s>> [%d/%d] %s%s",
-			farbeFett, u.dateiNummer, u.dateiGesamt, u.dateiName, farbeAus)}
-		dateiZeilen = append(dateiZeilen, u.dateiZeilen...)
-		if a.schrittLaeuft {
-			dateiZeilen = append(dateiZeilen,
-				fmt.Sprintf("%s  %-*s laeuft ...%s", farbeGelb, schrittSpalte, a.schritt, farbeAus))
+	var teile []dateiTeil
+	var gesamt []string
+	if len(laufend) <= 1 {
+		// Eine Datei: die Gesamtzeile gehört zu ihrem Fortschritt, wie immer.
+		p := a.platz
+		if len(laufend) == 1 {
+			p = laufend[0]
 		}
-	}
-
-	block := a.fortschrittsBlock(breite, jetzt)
-	if len(block) > 0 {
-		block = append([]string{""}, block...)
+		teile = []dateiTeil{a.mitPlatz(p).dateiTeil(breite, jetzt, true)}
+	} else {
+		for _, p := range laufend {
+			teile = append(teile, a.mitPlatz(p).dateiTeil(breite, jetzt, false))
+		}
+		if zeile := a.gesamtZeile(jetzt); zeile != "" {
+			gesamt = []string{"", zeile}
+		}
 	}
 	fuss := []string{"", farbeGrau + " Aufhoeren: Fenster schliessen oder Strg+C - es geht nichts verloren." + farbeAus}
 
-	platz := hoehe - len(kopf) - len(dateiKopf) - len(block) - len(fuss)
-	dateiZeilen = letzte(dateiZeilen, platz)
-	verlauf := verlaufKuerzen(u.verlauf, platz-len(dateiZeilen))
+	frei := hoehe - len(kopf) - len(gesamt) - len(fuss)
+	for _, t := range teile {
+		frei -= len(t.kopf) + len(t.block)
+	}
+	jeDatei := frei / len(teile)
+	sichtbar := 0
+	for i := range teile {
+		teile[i].zeilen = letzte(teile[i].zeilen, jeDatei)
+		sichtbar += len(teile[i].zeilen)
+	}
+	verlauf := verlaufKuerzen(u.verlauf, frei-sichtbar)
 
 	zeilen := append([]string{}, kopf...)
 	zeilen = append(zeilen, verlauf...)
-	zeilen = append(zeilen, dateiKopf...)
-	zeilen = append(zeilen, dateiZeilen...)
-	zeilen = append(zeilen, block...)
+	for _, t := range teile {
+		zeilen = append(zeilen, t.kopf...)
+		zeilen = append(zeilen, t.zeilen...)
+		zeilen = append(zeilen, t.block...)
+	}
+	zeilen = append(zeilen, gesamt...)
 	zeilen = append(zeilen, fuss...)
 	if len(zeilen) > hoehe {
 		zeilen = zeilen[:max(hoehe, 1)]
@@ -301,19 +310,94 @@ func (a *Anzeige) uebersichtZeilen(breite, hoehe int, jetzt time.Time) []string 
 	return zeilen
 }
 
-// fortschrittsBlock baut den unteren Teil, so nah an NVENCForge wie möglich:
+// dateiTeil ist der Bereich einer laufenden Datei in der Übersicht.
+type dateiTeil struct {
+	kopf   []string // ">> [2/5] Name"
+	zeilen []string // Info-Zeile, fertige Schritte, laufender Schritt
+	block  []string // Fortschritt, mit einer Leerzeile davor
+}
+
+// dateiTeil baut den Bereich des Platzes dieser Anzeige. mitGesamt hängt die
+// Gesamtzeile an den Fortschritt an.
+func (a *Anzeige) dateiTeil(breite int, jetzt time.Time, mitGesamt bool) dateiTeil {
+	var t dateiTeil
+	if a.dateiName != "" {
+		t.kopf = []string{fmt.Sprintf(" %s>> [%d/%d] %s%s",
+			farbeFett, a.dateiNummer, a.uebersicht.dateiGesamt, a.dateiName, farbeAus)}
+		t.zeilen = append(t.zeilen, a.dateiZeilen...)
+		if a.schrittLaeuft {
+			t.zeilen = append(t.zeilen,
+				fmt.Sprintf("%s  %-*s laeuft ...%s", farbeGelb, schrittSpalte, a.schritt, farbeAus))
+		}
+	}
+
+	block := a.platzFortschritt(breite, jetzt)
+	if mitGesamt {
+		block = a.fortschrittsBlock(breite, jetzt)
+	}
+	if len(block) > 0 {
+		t.block = append([]string{""}, block...)
+	}
+	return t
+}
+
+// mitPlatz ist eine Anzeige für den Platz p — für die Übersicht, die alle
+// Plätze zeichnet. Der Aufrufer hält a.mu.
+func (a *Anzeige) mitPlatz(p *platz) *Anzeige {
+	return &Anzeige{anzeigeKern: a.anzeigeKern, platz: p}
+}
+
+// laufendePlaetze sind die Plätze, die gerade eine Datei bearbeiten.
+func (a *Anzeige) laufendePlaetze() []*platz {
+	var laufend []*platz
+	for _, p := range a.plaetze {
+		if p.dateiName != "" {
+			laufend = append(laufend, p)
+		}
+	}
+	return laufend
+}
+
+// kopfRechts steht rechts in der Kopfzeile: welche Datei läuft — bei
+// mehreren, wie viele gleichzeitig und wie viele schon fertig sind.
+func (a *Anzeige) kopfRechts(laufend []*platz) string {
+	u := a.uebersicht
+	switch {
+	case u.dateiGesamt == 0:
+		return ""
+	case len(laufend) > 1:
+		return fmt.Sprintf("%d gleichzeitig, %d von %d fertig", len(laufend), u.fertig, u.dateiGesamt)
+	case len(laufend) == 1:
+		return fmt.Sprintf("Datei %d von %d", laufend[0].dateiNummer, u.dateiGesamt)
+	case a.mehrerePlaetze():
+		return fmt.Sprintf("%d von %d fertig", u.fertig, u.dateiGesamt)
+	default:
+		return fmt.Sprintf("Datei %d von %d", a.dateiNummer, u.dateiGesamt)
+	}
+}
+
+// fortschrittsBlock ist der Fortschritt des Platzes mit der Gesamtzeile
+// darunter — so steht er da, wenn nur eine Datei läuft.
+func (a *Anzeige) fortschrittsBlock(breite int, jetzt time.Time) []string {
+	zeilen := a.platzFortschritt(breite, jetzt)
+	if gesamt := a.gesamtZeile(jetzt); gesamt != "" {
+		zeilen = append(zeilen, gesamt)
+	}
+	return zeilen
+}
+
+// platzFortschritt baut den unteren Teil, so nah an NVENCForge wie möglich:
 // Balken, dann Position/Laufzeit/Rest, Bilder/s/Bitrate/Tempo und die
 // Grössen-Prognose. Beim Kopieren gibt es nur Balken, Zeiten und Menge,
 // beim Messen und Prüfen keinen Prozentwert.
-func (a *Anzeige) fortschrittsBlock(breite int, jetzt time.Time) []string {
-	u := a.uebersicht
-	s := u.stand
+func (a *Anzeige) platzFortschritt(breite int, jetzt time.Time) []string {
+	s := a.stand
 	laufzeit := jetzt.Sub(a.beginn)
 
 	var zeilen []string
 	switch {
 	case !a.schrittLaeuft:
-	case u.standDa && istUmwandeln(s):
+	case a.standDa && istUmwandeln(s):
 		zeilen = append(zeilen,
 			hauptBalken(s.Anteil, breite),
 			fmt.Sprintf("  %s %-8s   %s %-8s   %s %s",
@@ -325,9 +409,9 @@ func (a *Anzeige) fortschrittsBlock(breite int, jetzt time.Time) []string {
 				marke("Bitrate", beschriftung), bitrateText(s.BitrateKbps),
 				marke("Tempo", beschriftungEnd), farbeGruen+komma(s.Tempo, 2)+"x"+farbeAus),
 			fmt.Sprintf("  %s %-8s   %s",
-				marke("Bild", beschriftung), strconv.FormatInt(s.Bild, 10), u.groessenText()),
+				marke("Bild", beschriftung), strconv.FormatInt(s.Bild, 10), a.platz.groessenText()),
 		)
-	case u.standDa:
+	case a.standDa:
 		zeilen = append(zeilen,
 			hauptBalken(s.Anteil, breite),
 			fmt.Sprintf("  %s %-8s   %s %s",
@@ -340,16 +424,12 @@ func (a *Anzeige) fortschrittsBlock(breite int, jetzt time.Time) []string {
 	default:
 		zeilen = append(zeilen, fmt.Sprintf("  %s %s", marke("Laufzeit", beschriftung), zeitText(laufzeit)))
 		teile := append([]string{}, a.messungen...)
-		if u.laufendeMessung > 0 {
-			teile = append(teile, fmt.Sprintf("misst CRF %d ...", u.laufendeMessung))
+		if a.laufendeMessung > 0 {
+			teile = append(teile, fmt.Sprintf("misst CRF %d ...", a.laufendeMessung))
 		}
 		if len(teile) > 0 {
 			zeilen = append(zeilen, fmt.Sprintf("  %s %s", marke("Messungen", beschriftung), strings.Join(teile, "   ")))
 		}
-	}
-
-	if gesamt := a.gesamtZeile(jetzt); gesamt != "" {
-		zeilen = append(zeilen, gesamt)
 	}
 	return zeilen
 }
@@ -358,46 +438,71 @@ func (a *Anzeige) fortschrittsBlock(breite int, jetzt time.Time) []string {
 //
 // Die Restzeit setzt sich zusammen aus dem Rest der laufenden Datei (beim
 // Umwandeln live von ffmpeg, sonst aus der Schätzung) und der Schätzung für
-// alle folgenden Dateien.
+// alle folgenden Dateien. Laufen mehrere gleichzeitig, zählen die Reste aller
+// laufenden, und die Summe teilt sich auf die gleichzeitig arbeitenden Plätze
+// auf — eine grobe Schätzung, denn jede Datei läuft dann langsamer als allein.
 func (a *Anzeige) gesamtZeile(jetzt time.Time) string {
 	u := a.uebersicht
-	if u.dateiGesamt <= 1 || u.dateiName == "" {
+	laufend := a.laufendePlaetze()
+	if u.dateiGesamt <= 1 || len(laufend) == 0 {
 		return ""
 	}
 
-	vergangen := jetzt.Sub(u.dateiBeginn)
-	var dateiRest time.Duration
-	switch {
-	case u.umwandelnVorbei:
-		// Prüfen und Ablegen dauern Sekunden — nichts mehr einzurechnen.
-	case u.standDa && istUmwandeln(u.stand) && u.stand.Rest > 0:
-		dateiRest = u.stand.Rest
-	case u.dateiSchaetzung > vergangen:
-		dateiRest = u.dateiSchaetzung - vergangen
+	var restSumme time.Duration
+	anteilSumme := 0.0
+	for _, p := range laufend {
+		rest, anteil := p.restUndAnteil(jetzt)
+		restSumme += rest
+		anteilSumme += anteil
 	}
 
-	dateiAnteil := 0.0
-	if vergangen+dateiRest > 0 {
-		dateiAnteil = float64(vergangen) / float64(vergangen+dateiRest)
+	erledigt := laufend[0].dateiNummer - 1
+	zaehler := fmt.Sprintf("(%d/%d)", laufend[0].dateiNummer, u.dateiGesamt)
+	gleichzeitig := 1
+	if a.mehrerePlaetze() {
+		erledigt = u.fertig
+		zaehler = fmt.Sprintf("(%d/%d fertig)", u.fertig, u.dateiGesamt)
+		gleichzeitig = a.parallel
 	}
-	anteil := (float64(u.dateiNummer-1) + dateiAnteil) / float64(u.dateiGesamt)
+	anteil := (float64(erledigt) + anteilSumme) / float64(u.dateiGesamt)
 
 	rest := "-:--"
-	if gesamt := dateiRest + u.danachSchaetzung; gesamt > 0 {
+	if gesamt := (restSumme + u.danachSchaetzung) / time.Duration(gleichzeitig); gesamt > 0 {
 		rest = "ca. " + uhrText(gesamt)
 	}
 	return fmt.Sprintf("  %s [%s]  %s  %s  %s %s",
 		farbeMagentaFett+fmt.Sprintf("%-*s", beschriftung, "Gesamt")+farbeAus,
 		balkenText(anteil, gesamtBalken, farbeMagenta),
 		farbeWeissFett+prozentText(anteil)+farbeAus,
-		farbeGrau+fmt.Sprintf("(%d/%d)", u.dateiNummer, u.dateiGesamt)+farbeAus,
+		farbeGrau+zaehler+farbeAus,
 		farbeCyan+"noch"+farbeAus, farbeGelb+rest+farbeAus)
 }
 
+// restUndAnteil schätzt, wie lange die Datei dieses Platzes noch braucht und
+// wie viel von ihr schon geschafft ist (0 bis 1).
+func (p *platz) restUndAnteil(jetzt time.Time) (time.Duration, float64) {
+	vergangen := jetzt.Sub(p.dateiBeginn)
+	var rest time.Duration
+	switch {
+	case p.umwandelnVorbei:
+		// Prüfen und Ablegen dauern Sekunden — nichts mehr einzurechnen.
+	case p.standDa && istUmwandeln(p.stand) && p.stand.Rest > 0:
+		rest = p.stand.Rest
+	case p.dateiSchaetzung > vergangen:
+		rest = p.dateiSchaetzung - vergangen
+	}
+
+	anteil := 0.0
+	if vergangen+rest > 0 {
+		anteil = float64(vergangen) / float64(vergangen+rest)
+	}
+	return rest, anteil
+}
+
 // groessenText zeigt, wie gross das Ergebnis voraussichtlich wird.
-func (u *uebersicht) groessenText() string {
-	quelleMB := float64(u.quelleBytes) / mebibyte
-	prognoseMB := u.prognoseBytes / mebibyte
+func (p *platz) groessenText() string {
+	quelleMB := float64(p.quelleBytes) / mebibyte
+	prognoseMB := p.prognoseBytes / mebibyte
 
 	switch {
 	case prognoseMB >= 1 && quelleMB > 0:
@@ -415,12 +520,8 @@ func (u *uebersicht) groessenText() string {
 	}
 }
 
-func kopfZeile(breite int, u *uebersicht) string {
+func kopfZeile(breite int, rechts string) string {
 	links := " " + farbeFett + "CloudForge " + appVersion + farbeAus
-	rechts := ""
-	if u.dateiGesamt > 0 {
-		rechts = fmt.Sprintf("Datei %d von %d", u.dateiNummer, u.dateiGesamt)
-	}
 	luecke := max(breite-2-sichtbareLaenge(links)-len(rechts), 2)
 	return links + strings.Repeat(" ", luecke) + rechts
 }

@@ -31,14 +31,14 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.18.0                                   Datei 2 von 3
+       CloudForge 0.19.0                                   Datei 2 von 3
        -----------------------------------------------------------------
-       OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 97,3  in 42 Min
+       OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 92,4 (Mittel 96,3)  in 42 Min
 
        >> [2/3] Urlaubsfilm.mp4
          1,81 GB  |  1080p mit 50 Bildern/s  |  52 Min Film  |  dauert etwa 45 Min
          1/5 Datei holen       1,81 GB, vorab geholt (0 Sek)
-         2/5 Qualitaet messen  gewaehlt CRF 22, erwartet VMAF 97,1 (2 Min)
+         2/5 Qualitaet messen  gewaehlt CRF 28, erwartet VMAF 92,2 (Mittel 96,1) (2 Min)
            Naechste Datei wird waehrenddessen schon geholt: Film3.mp4
          3/5 Umwandeln         laeuft ...
 
@@ -55,7 +55,10 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
 
      Während ein Film umgewandelt wird, holt CloudForge schon den nächsten
      aus der Cloud ("vorab geholt"). Das spart etwa 3 Minuten je Film.
-     Umgewandelt wird trotzdem immer nur einer.
+     Umgewandelt wird trotzdem immer nur einer - es sei denn, du stellst
+     parallelDateien höher (Teil 6). Dann stehen mehrere Dateien
+     untereinander in der Übersicht, jede mit eigenem Fortschritt, und die
+     Zeile "Gesamt" einmal darunter.
 
   6. Wenn alles fertig ist, erscheint eine kleine Nachricht am Bildschirmrand.
      Die Übersicht verschwindet, und im Fenster steht als gewöhnlicher Text
@@ -323,7 +326,29 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         loeschen     = Original wird gelöscht (spart sofort Platz)
         behalten     = Original bleibt, wo es ist
 
+    vmafPerzentil=5
+        Woran CloudForge die Bildqualität misst (seit 0.19.0).
+        5 = am 5-%-Perzentil: 95 % der gemessenen Bilder sind mindestens so
+            gut wie das Ziel. So fallen einzelne schwache Szenen auf, die im
+            Durchschnitt untergehen würden (ab Werk).
+        0 = am Durchschnitt (Mittelwert) wie bis 0.18.0 - dann gilt zielVMAF.
+        Ehrlich: In sehr dunklen Szenen ist die Messung selbst wenig
+        empfindlich. Gegen Klötzchen in Schatten hilft dort eher
+        varianceBoost.
+
+    zielVMAFPerzentil=92
+        Das Qualitätsziel für das Perzentil - wie zielVMAF eine Untergrenze.
+        Das Perzentil liegt immer unter dem Durchschnitt. Gemessen an 6
+        Filmen: Mit 92 werden die Dateien im Schnitt genauso groß wie mit
+        zielVMAF=96 am Durchschnitt. Gleichmäßige Filme werden dabei bis zu
+        19 % kleiner, Filme mit einzelnen schwachen Szenen bis zu 33 %
+        größer - genau dort sollen die Daten hin.
+        Faustregel: Durchschnitts-Ziel minus 4 (95 -> 91, 96 -> 92).
+        Im Protokoll steht bei jeder Messung beides, z. B.
+        "CRF 28 ergibt VMAF 92,31 (Mittel 96,05)".
+
     zielVMAF=95
+        Gilt nur mit vmafPerzentil=0 (Messen am Durchschnitt).
         Die Bildqualität. CloudForge sucht für jeden Film die kleinste Datei,
         die diesen Wert mindestens erreicht. Gemessen an einer 1080p-Szene:
             93   = sichtbar weicher, Klötzchen, Streifen  (etwa 1/5 der Größe)
@@ -339,6 +364,10 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         gar nicht umgewandelt, nur verlustfrei umgepackt.
         Wer das Ziel ändert, passt auch  ankerNiedrig  und  ankerHoch  an
         (steht in der Einstellungsdatei erklärt).
+        Stößt die Suche an den Rand ihres Bereichs (crfMin, crfMax oder
+        schon ankerNiedrig verfehlt das Ziel), steht im Protokoll eine Zeile
+        "CRF-Anschlag ...". Kommt das oft vor, lohnt es, den Bereich in der
+        Einstellungsdatei anzupassen.
 
     kostenDeckelProzent=0
         Der Kosten-Deckel wie bei NVENCForge: Das neue Bild darf höchstens
@@ -350,7 +379,7 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         verlustfrei umgepackt (siehe mindestErsparnisProzent).
         Wer ihn trotzdem will: 50 = höchstens die Hälfte des Originals.
 
-    mindestErsparnisProzent=15
+    mindestErsparnisProzent=10
         Wird eine Datei nicht mindestens so viel kleiner, wird sie nicht
         umgewandelt, sondern nur verlustfrei nach MKV umgepackt (Bild bleibt
         gleich) und in "output" gelegt - wie bei NVENCForge. CloudForge rechnet
@@ -361,8 +390,8 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         probehalber um (etwa 1 Minute; seit 0.13.0, 20 statt 10 Stücke seit
         0.16.0 - 10 lagen bei einem Film 6 Punkte daneben) und entscheidet
         erst dann.
-        Ab Werk 15 (vorher 30): Auch Grenzfälle werden noch kleiner gemacht,
-        darunter lohnt die Rechenzeit kaum.
+        Ab Werk 10 (seit 0.19.0; davor 15, ganz früher 30): Auch Grenzfälle
+        werden noch kleiner gemacht, darunter lohnt die Rechenzeit kaum.
 
     messfensterAnzahl=5
         An so vielen Stellen misst CloudForge die Qualität, bevor es einen
@@ -375,6 +404,17 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         das Maximum, mehr nimmt SVT-AV1 nicht an. Ein Film belegt damit gut
         6 der 8 Kerne. Der Desktop bleibt trotzdem bedienbar, weil CloudForge
         mit niedrigster Priorität rechnet.
+
+    parallelDateien=1
+        Wie viele Dateien gleichzeitig umgewandelt werden (seit 0.19.0).
+        1 = eine nach der anderen (ab Werk).
+        Ein einzelner Film nutzt nur gut 6 Kerne. Auf dem netcup-Server
+        (8 Kerne) brachten 2 gleichzeitig 17 % mehr Durchsatz - jede
+        einzelne Datei dauert dabei aber fast doppelt so lange, und das
+        Vorab-Holen der nächsten Datei entfällt. Auf Rechnern mit vielen
+        Kernen lohnt es sich mehr. Faustregel: etwa eine Datei je 4 Kerne.
+        Jede gleichzeitige Datei braucht ihren eigenen Platz auf der Platte;
+        reicht er nicht, wartet sie, bis eine andere fertig ist.
 
     bittiefe=10
         10 = beugt Streifen in Farbverläufen (Banding) vor. Kostet auf dem
@@ -396,11 +436,11 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         Farbangaben der Quelle (auch HDR: PQ oder HLG, BT.2020) gehen
         unverändert ins Ergebnis - es wird nichts dazuerfunden.
 
-    varianceBoost=nein
+    varianceBoost=ja
         ja = SVT-AV1 gibt ruhigen, glatten und dunklen Flächen (Wände, Haut,
              Schatten) mehr Daten - genau dort entstehen sonst Klötzchen und
-             Streifen. Die Datei wird dabei kaum größer (gemessen). Ob es dir
-             besser gefällt, zeigt nur ein Vergleich mit den Augen.
+             Streifen. Die Datei wird dabei kaum größer (gemessen).
+             Ab Werk ja (seit 0.19.0, vorher nein).
 
     varianceBoostStaerke=2
         Wie stark der Variance Boost wirkt (seit 0.18.0). Gilt nur mit
@@ -439,7 +479,21 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         Zum Ausprobieren: Schalter auf ja stellen, speichern, ein paar Filme
         umwandeln und mit früheren vergleichen. Welche Datei mit welcher
         Einstellung entstanden ist, steht im Protokoll
-        ("Einstellungen: ... Variance Boost an ...").
+        ("Einstellungen: ... Variance Boost an ..."). Seit 0.19.0 steht dort
+        auch, welche Fassungen von ffmpeg, SVT-AV1 und libvmaf gerechnet
+        haben ("Werkzeuge: ...").
+
+    filmKorn=0
+        Filmkorn (seit 0.19.0): Der Player legt beim Abspielen feines,
+        künstliches Korn über das Bild. Das gibt körnigen Filmen ihren Look
+        zurück und kann Klötzchen in dunklen, glatten Flächen überdecken.
+        0 = aus (ab Werk), 1 bis 50 = Stärke, für leicht körnige Filme
+        etwa 4 bis 8.
+        ACHTUNG, SEHR LANGSAM: Gemessen an einem 1080p-Film mit 50 Bildern/s
+        dauerte das Umwandeln 8,5-mal so lange (280 statt 33 Sekunden je
+        Minute Film). Nur einschalten, wenn die Zeit keine Rolle spielt.
+        Die Messproben laufen immer ohne Korn, und die Quelle wird dafür
+        nicht geglättet - die Datei wird so nur etwa 1 % größer.
 
     vollpruefung=nein
         ja = jedes Ergebnis vor dem Ablegen einmal komplett durchlesen.

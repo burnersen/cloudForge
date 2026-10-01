@@ -161,20 +161,98 @@ func TestRundeAuf(t *testing.T) {
 // kurve baut eine erfundene Probemessung aus festen Punkten. Die Grösse sinkt
 // mit jedem CRF um 8 % — ungefähr wie echt, für die Suche genügt "fällt".
 func kurve(punkte map[int]float64) probeMessung {
-	return func(crf int) (float64, int64, error) {
+	return func(crf int) (VMAFWerte, int64, error) {
 		vmaf, da := punkte[crf]
 		if !da {
-			return 0, 0, fmt.Errorf("CRF %d ist in der Testkurve nicht vorgesehen", crf)
+			return VMAFWerte{}, 0, fmt.Errorf("CRF %d ist in der Testkurve nicht vorgesehen", crf)
 		}
-		return vmaf, int64(100e6 * math.Pow(0.92, float64(crf))), nil
+		return mittelwert(vmaf), int64(100e6 * math.Pow(0.92, float64(crf))), nil
 	}
 }
 
+// mittelwert ist eine Messung, bei der Perzentil und Mittelwert gleich sind —
+// die Testkurven stammen aus der Zeit, als nur der Mittelwert zählte.
+func mittelwert(vmaf float64) VMAFWerte {
+	return VMAFWerte{Wert: vmaf, Mittel: vmaf}
+}
+
+// testSuche misst am Mittelwert (vmafPerzentil=0), damit ziel genau das Ziel
+// der Kurve ist. Für die Suche selbst ist es gleich, welcher Wert gemessen
+// wurde — welches Ziel gilt, prüft TestVMAFZielFolgtDemVerfahren.
 func testSuche(ziel float64, anker [2]int, punkte map[int]float64) *crfSuche {
 	e := standardWerte()
+	e.VMAFPerzentil = 0
 	e.ZielVMAF = ziel
 	e.AnkerNiedrig, e.AnkerHoch = anker[0], anker[1]
 	return &crfSuche{ctx: context.Background(), e: e, probe: kurve(punkte)}
+}
+
+func TestVMAFZielFolgtDemVerfahren(t *testing.T) {
+	e := standardWerte()
+	e.ZielVMAF, e.ZielVMAFPerzentil = 96, 92.5
+
+	e.VMAFPerzentil = 5
+	if z := vmafZiel(e); z != 92.5 {
+		t.Errorf("am Perzentil gemessen gilt zielVMAFPerzentil 92,5, bekommen %v", z)
+	}
+	e.VMAFPerzentil = 0
+	if z := vmafZiel(e); z != 96 {
+		t.Errorf("am Mittelwert gemessen gilt zielVMAF 96, bekommen %v", z)
+	}
+}
+
+// Die Suche vergleicht den gemessenen Wert (hier das Perzentil) mit dem Ziel —
+// der Mittelwert liegt immer darüber und darf die Wahl nicht beeinflussen.
+func TestSucheMisstAmPerzentil(t *testing.T) {
+	s := testSuche(0, [2]int{18, 30}, nil)
+	s.e.VMAFPerzentil, s.e.ZielVMAFPerzentil = 5, 92
+	// Gemessen am 01.10.2026 (Ausschnitte eines 1080p30-Films): Mittelwert
+	// und 5-%-Perzentil liegen dort 3 bis 6 Punkte auseinander.
+	perzentil := map[int]float64{18: 95.98, 22: 95.01, 26: 93.68, 30: 92.13, 34: 89.68}
+	mittel := map[int]float64{18: 99.24, 22: 98.94, 26: 98.39, 30: 97.56, 34: 96.21}
+	s.probe = func(crf int) (VMAFWerte, int64, error) {
+		werte := VMAFWerte{Wert: linear(perzentil, crf), Mittel: linear(mittel, crf)}
+		return werte, int64(100e6 * math.Pow(0.94, float64(crf))), nil
+	}
+
+	ergebnis, err := s.suchen()
+	if err != nil {
+		t.Fatalf("unerwarteter Fehler: %v", err)
+	}
+	if ergebnis.ErwarteterVMAF < 92 {
+		t.Errorf("CRF %d mit Perzentil %.2f liegt unter dem Ziel 92", ergebnis.CRF, ergebnis.ErwarteterVMAF)
+	}
+	if ergebnis.CRF != 30 {
+		t.Errorf("CRF 30 ist der sparsamste Wert mit Perzentil >= 92, bekommen CRF %d", ergebnis.CRF)
+	}
+	if m := ergebnis.ErwarteterMittelwert(); m != 97.56 {
+		t.Errorf("Mittelwert bei CRF 30 ist 97,56, bekommen %v", m)
+	}
+}
+
+func TestCRFAnschlagText(t *testing.T) {
+	e := standardWerte()
+	e.CRFMin, e.CRFMax, e.AnkerNiedrig = 14, 44, 18
+
+	faelle := []struct {
+		name      string
+		ergebnis  AutoCQErgebnis
+		erwartung string // "" = keine Meldung
+	}{
+		{"mitten im Bereich", AutoCQErgebnis{CRF: 30, ZielErreichbar: true}, ""},
+		{"oben angestossen", AutoCQErgebnis{CRF: 44, ZielErreichbar: true}, "CRF-Anschlag oben"},
+		{"unten angestossen", AutoCQErgebnis{CRF: 14, ZielErreichbar: true}, "CRF-Anschlag unten: gewaehlt CRF 14 = crfMin"},
+		{"Ziel schon beim besseren Anker verfehlt", AutoCQErgebnis{CRF: 18, ZielErreichbar: false}, "schon ankerNiedrig (CRF 18)"},
+	}
+	for _, f := range faelle {
+		text := crfAnschlagText(f.ergebnis, e)
+		switch {
+		case f.erwartung == "" && text != "":
+			t.Errorf("%s: keine Meldung erwartet, bekommen %q", f.name, text)
+		case f.erwartung != "" && !strings.Contains(text, f.erwartung):
+			t.Errorf("%s: %q erwartet, bekommen %q", f.name, f.erwartung, text)
+		}
+	}
 }
 
 // Der Fall, der den Nutzer am 25.09.2026 gestört hat: Die lineare
@@ -267,10 +345,10 @@ func TestSucheMeldetAbbruchBeimNachmessen(t *testing.T) {
 	s := testSuche(98, [2]int{16, 26}, map[int]float64{16: 99.0, 26: 97.0, 21: 97.7})
 	s.ctx = ctx
 	echt := s.probe
-	s.probe = func(crf int) (float64, int64, error) {
+	s.probe = func(crf int) (VMAFWerte, int64, error) {
 		if crf != 16 && crf != 26 && crf != 21 {
 			abbrechen()
-			return 0, 0, ErrAbgebrochen
+			return VMAFWerte{}, 0, ErrAbgebrochen
 		}
 		return echt(crf)
 	}
@@ -279,31 +357,80 @@ func TestSucheMeldetAbbruchBeimNachmessen(t *testing.T) {
 	}
 }
 
-func TestVMAFAusAusgabe(t *testing.T) {
-	echteAusgabe := `[Parsed_libvmaf_2 @ 0x789de8002e40] VMAF score: 93.558683
-[out#0/null @ 0x5f2] video:1234KiB`
+// Aufbau wie das echte Protokoll von libvmaf (gekürzt, 01.10.2026 auf dem
+// Server erzeugt): je gewertetem Bild ein Eintrag, mit n_subsample=4 nur
+// jedes vierte.
+const vmafProtokollBeispiel = `{
+  "version": "86da14d",
+  "frames": [
+    {"frameNum": 0, "metrics": {"integer_motion2": 0.0, "vmaf": 98.0}},
+    {"frameNum": 4, "metrics": {"integer_motion2": 1.2, "vmaf": 90.0}},
+    {"frameNum": 8, "metrics": {"integer_motion2": 1.1, "vmaf": 96.0}},
+    {"frameNum": 12, "metrics": {"integer_motion2": 0.9, "vmaf": 94.0}},
+    {"frameNum": 16, "metrics": {"integer_motion2": 1.0, "vmaf": 97.0}}
+  ],
+  "pooled_metrics": {"vmaf": {"min": 90.0, "max": 98.0, "mean": 95.0, "harmonic_mean": 94.9}}
+}`
 
-	wert, err := vmafAusAusgabe(echteAusgabe)
+func TestVMAFAusProtokoll(t *testing.T) {
+	inhalt := []byte(vmafProtokollBeispiel)
+
+	mittel, err := vmafAusProtokoll(inhalt, 0)
 	if err != nil {
 		t.Fatalf("unerwarteter Fehler: %v", err)
 	}
-	if math.Abs(wert-93.558683) > 0.0001 {
-		t.Errorf("93.558683 erwartet, %v bekommen", wert)
+	if mittel.Wert != 95 || mittel.Mittel != 95 {
+		t.Errorf("am Mittelwert: Wert und Mittel 95 erwartet, bekommen %+v", mittel)
+	}
+
+	// Sortiert 90, 94, 96, 97, 98: Das 25-%-Perzentil liegt genau auf dem
+	// zweiten Rang (94), das 5-%-Perzentil ein Fünftel des Wegs von 90 zu 94.
+	viertel, err := vmafAusProtokoll(inhalt, 25)
+	if err != nil {
+		t.Fatalf("unerwarteter Fehler: %v", err)
+	}
+	if viertel.Wert != 94 || viertel.Mittel != 95 {
+		t.Errorf("25-%%-Perzentil 94 bei Mittel 95 erwartet, bekommen %+v", viertel)
+	}
+	fuenf, _ := vmafAusProtokoll(inhalt, 5)
+	if math.Abs(fuenf.Wert-90.8) > 1e-9 {
+		t.Errorf("5-%%-Perzentil 90,8 erwartet, bekommen %v", fuenf.Wert)
 	}
 }
 
-func TestVMAFAusAusgabeMeldetFehlendenWert(t *testing.T) {
+func TestVMAFAusProtokollMeldetUnbrauchbares(t *testing.T) {
 	faelle := map[string]string{
-		"leere Ausgabe":     "",
-		"nur Fehlermeldung": "Error opening input file",
-		"Wert unlesbar":     "VMAF score: keine-zahl",
-		"Wert ausserhalb":   "VMAF score: 250.0",
+		"leer":            "",
+		"kein JSON":       "Error opening input file",
+		"keine Bilder":    `{"frames": []}`,
+		"Bild ohne VMAF":  `{"frames": [{"frameNum": 0, "metrics": {"integer_motion2": 0.0}}]}`,
+		"Wert ausserhalb": `{"frames": [{"frameNum": 0, "metrics": {"vmaf": 250.0}}]}`,
 	}
-
-	for name, ausgabe := range faelle {
-		if _, err := vmafAusAusgabe(ausgabe); err == nil {
+	for name, inhalt := range faelle {
+		if _, err := vmafAusProtokoll([]byte(inhalt), 5); err == nil {
 			t.Errorf("%s: Fehler erwartet, keiner gekommen", name)
 		}
+	}
+}
+
+func TestUnteresPerzentil(t *testing.T) {
+	werte := []float64{97, 90, 98, 94, 96} // absichtlich unsortiert
+	faelle := []struct {
+		prozent  int
+		erwartet float64
+	}{
+		{0, 90}, {25, 94}, {50, 96}, {10, 91.6},
+	}
+	for _, f := range faelle {
+		if bekommen := unteresPerzentil(werte, f.prozent); math.Abs(bekommen-f.erwartet) > 1e-9 {
+			t.Errorf("%d-%%-Perzentil: %v erwartet, bekommen %v", f.prozent, f.erwartet, bekommen)
+		}
+	}
+	if werte[0] != 97 {
+		t.Errorf("die Reihenfolge der Werte darf sich nicht aendern: %v", werte)
+	}
+	if einzeln := unteresPerzentil([]float64{93.5}, 5); einzeln != 93.5 {
+		t.Errorf("ein einziges Bild ist sein eigenes Perzentil, bekommen %v", einzeln)
 	}
 }
 
@@ -341,7 +468,7 @@ func TestVmafMessgroesse(t *testing.T) {
 // Beide Seiten müssen genau gleich vorbereitet werden: gepaart nach Bildnummer
 // und — nur bei kleinen Videos — mit demselben Filter vergrössert.
 func TestVmafFilterVergroessertBeideSeitenGleich(t *testing.T) {
-	klein := vmafFilter(1280, 720, 8)
+	klein := vmafFilter(1280, 720, 8, vmafProtokollName)
 	if n := strings.Count(klein, "scale=1920:1080:flags=bicubic"); n != 2 {
 		t.Errorf("720p: Vergrössern auf beiden Seiten erwartet, %d-mal gefunden: %s", n, klein)
 	}
@@ -349,11 +476,11 @@ func TestVmafFilterVergroessertBeideSeitenGleich(t *testing.T) {
 		t.Errorf("720p: Bildnummer-Paarung auf beiden Seiten erwartet, %d-mal gefunden: %s", n, klein)
 	}
 
-	gross := vmafFilter(1920, 1080, 8)
+	gross := vmafFilter(1920, 1080, 8, vmafProtokollName)
 	if strings.Contains(gross, "scale=") {
 		t.Errorf("1080p darf nicht vergrössert werden: %s", gross)
 	}
-	if !strings.Contains(gross, "libvmaf=n_threads=8:n_subsample=3") {
+	if !strings.Contains(gross, "libvmaf=n_threads=8:n_subsample=4:log_fmt=json:log_path="+vmafProtokollName) {
 		t.Errorf("Messung selbst verändert: %s", gross)
 	}
 }
@@ -362,7 +489,7 @@ func TestVmafFilterVergroessertBeideSeitenGleich(t *testing.T) {
 // gemessenen CRF wird gerade verbunden, ausserhalb gibt es keine Werte. Die
 // Grösse fällt je Stufe um den Faktor (0,92 = 8 % kleiner, wie in kurve).
 func protokollKurve(punkte map[int]float64, faktorJeStufe float64) probeMessung {
-	return func(crf int) (float64, int64, error) {
+	return func(crf int) (VMAFWerte, int64, error) {
 		unten, oben := -1, -1
 		for c := range punkte {
 			if c <= crf && (unten < 0 || c > unten) {
@@ -373,13 +500,13 @@ func protokollKurve(punkte map[int]float64, faktorJeStufe float64) probeMessung 
 			}
 		}
 		if unten < 0 || oben < 0 {
-			return 0, 0, fmt.Errorf("CRF %d liegt ausserhalb der Messpunkte", crf)
+			return VMAFWerte{}, 0, fmt.Errorf("CRF %d liegt ausserhalb der Messpunkte", crf)
 		}
 		vmaf := punkte[unten]
 		if oben != unten {
 			vmaf += float64(crf-unten) / float64(oben-unten) * (punkte[oben] - punkte[unten])
 		}
-		return vmaf, int64(100e6 * math.Pow(faktorJeStufe, float64(crf))), nil
+		return mittelwert(vmaf), int64(100e6 * math.Pow(faktorJeStufe, float64(crf))), nil
 	}
 }
 
@@ -462,10 +589,10 @@ func TestPlateauMeldetAbbruch(t *testing.T) {
 		s.ctx = ctx
 		s.e.CRFMax = crfMax
 		echt := protokollKurve(map[int]float64{16: 96.44, 20: 95.84, 26: 94.75}, 0.92)
-		s.probe = func(crf int) (float64, int64, error) {
+		s.probe = func(crf int) (VMAFWerte, int64, error) {
 			if crf != 16 && crf != 26 {
 				abbrechen()
-				return 0, 0, ErrAbgebrochen
+				return VMAFWerte{}, 0, ErrAbgebrochen
 			}
 			return echt(crf)
 		}

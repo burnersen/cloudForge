@@ -10,12 +10,15 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -90,18 +93,24 @@ type EncodeAuftrag struct {
 	// Umwandeln — beim Umpacken bleibt das Bild ohnehin, wie es ist.
 	Verkleinern string
 	Farbangaben []string
+
+	// MitFilmKorn legt das Filmkorn aus der INI (filmKorn) auf — nur beim
+	// finalen Encode, nie bei Messproben oder der Grössenprobe (siehe
+	// svtParameter).
+	MitFilmKorn bool
 }
 
 // videoArgumente sind die Encoder-Einstellungen, die für jeden Lauf gelten —
 // für die Auto-CQ-Proben genauso wie für die ganze Datei. Nur so misst die
-// Probe, was die Datei später wirklich bekommt.
-func videoArgumente(crf int, e Einstellungen) []string {
+// Probe, was die Datei später wirklich bekommt. Einzige Ausnahme ist das
+// Filmkorn (mitFilmKorn), siehe svtParameter.
+func videoArgumente(crf int, e Einstellungen, mitFilmKorn bool) []string {
 	return []string{
 		"-c:v", videoCodec,
 		"-preset", strconv.Itoa(e.Preset),
 		"-crf", strconv.Itoa(crf),
 		"-pix_fmt", zielPixelFormat(e),
-		"-svtav1-params", svtParameter(e),
+		"-svtav1-params", svtParameter(e, mitFilmKorn),
 	}
 }
 
@@ -111,7 +120,25 @@ func videoArgumente(crf int, e Einstellungen) []string {
 // Stärke und Oktil gehen nur mit dem Variance Boost mit, dann aber immer
 // ausdrücklich — so gilt, was in INI und Protokoll steht, auch wenn eine
 // neuere SVT-Fassung andere Werkswerte mitbringt.
-func svtParameter(e Einstellungen) string {
+//
+// Filmkorn (seit 0.19.0) nur mit mitFilmKorn, also nur im finalen Encode:
+// Der Decoder (libdav1d) legt das Korn beim Abspielen auf, und VMAF würde es
+// in einer Messprobe als Fehler werten — Auto-CQ nähme dann einen viel zu
+// niedrigen CRF. Entrauscht wird die Quelle nie (film-grain-denoise=0, auch
+// wenn das der Werkswert ist, steht es ausdrücklich da): Sonst kodiert der
+// finale Encode ein geglättetes Bild, das nicht mehr zu den Messproben passt
+// und wachsartig wirkt. Gemessen 01.10.2026: mit denoise=0 wird die Datei nur
+// 0,2 bis 1,2 % grösser als ohne Korn — die Grössen-Vorhersage aus den Proben
+// stimmt. Dafür dauert der Encode bei preset 9 das 8,5-fache (filmKorn in
+// config.go).
+//
+// lp bleibt auch mit mehreren Dateien gleichzeitig (parallelDateien) bei
+// kerne: SVT-AV1s lp ist keine Kernzahl, sondern ein Grad der Parallelität,
+// und Aufteilen kostet. Gemessen 01.10.2026 auf netcup (8 Kerne) an 60 s
+// 1080p50, preset 9, je Datei: allein lp 6 33,0 s; zu zweit je lp 6 28,3 s
+// (+17 % Durchsatz), je lp 4 28,7 s, je lp 3 35,1 s (6 % langsamer als
+// nacheinander); zu dritt je lp 3 33,1 s.
+func svtParameter(e Einstellungen, mitFilmKorn bool) string {
 	teile := []string{"lp=" + strconv.Itoa(e.Kerne)}
 	if e.Tune0 {
 		teile = append(teile, "tune=0")
@@ -120,6 +147,9 @@ func svtParameter(e Einstellungen) string {
 		teile = append(teile, "enable-variance-boost=1",
 			"variance-boost-strength="+strconv.Itoa(e.VarianceBoostStaerke),
 			"variance-octile="+strconv.Itoa(e.VarianceOktil))
+	}
+	if mitFilmKorn && e.FilmKorn > 0 {
+		teile = append(teile, "film-grain="+strconv.Itoa(e.FilmKorn), "film-grain-denoise=0")
 	}
 	return strings.Join(teile, ":")
 }
@@ -150,7 +180,7 @@ func EncodeArgumente(auftrag EncodeAuftrag, e Einstellungen) []string {
 
 	if auftrag.NurVideo {
 		args = append(args, "-map", ersteFilmspur, "-an", "-sn")
-		args = append(args, videoArgumente(auftrag.CRF, e)...)
+		args = append(args, videoArgumente(auftrag.CRF, e, auftrag.MitFilmKorn)...)
 		return append(args, auftrag.Ziel)
 	}
 
@@ -167,7 +197,7 @@ func EncodeArgumente(auftrag EncodeAuftrag, e Einstellungen) []string {
 		if auftrag.Verkleinern != "" {
 			args = append(args, "-vf", auftrag.Verkleinern)
 		}
-		args = append(args, videoArgumente(auftrag.CRF, e)...)
+		args = append(args, videoArgumente(auftrag.CRF, e, auftrag.MitFilmKorn)...)
 		args = append(args, auftrag.Farbangaben...)
 	}
 	// Ton immer 1:1 (seit 0.14.0, Nutzerwunsch): ein zweites Mal
@@ -273,40 +303,135 @@ func fensterArgumente(quelle string, fenster []Fenster, verkleinern string) []st
 // Die Probe entsteht Bild für Bild aus der Referenz, deshalb ist die Nummer
 // hier der sichere Schlüssel.
 //
-// Gewertet wird nur jedes dritte Bild (n_subsample, seit 0.10.0, wie in
-// NVENCForge): Gemessen 26.09.2026 an 1200 Bildern 1080p50 kam 97,404 statt
-// 97,407 heraus, der Messschritt wurde 5 s schneller. Die Bildpaarung bleibt
-// davon unberührt — gepaart wird weiter jedes Bild, nur gerechnet wird
-// seltener.
+// Gewertet wird nur jedes vierte Bild (n_subsample; 0.10.0 bis 0.18.0 jedes
+// dritte, wie in NVENCForge; seit 0.19.0 vier auf Wunsch des Nutzers — ein
+// Viertel weniger Rechenarbeit). Gemessen 26.09.2026 an 1200 Bildern 1080p50
+// mit jedem dritten: 97,404 statt 97,407. Bei 5 Stücken zu 8 s mit 25
+// Bildern/s bleiben 250 gewertete Bilder, das 5-%-Perzentil ist dann etwa das
+// zwölftschlechteste. Die Bildpaarung bleibt davon unberührt — gepaart wird
+// weiter jedes Bild, nur gerechnet wird seltener.
+//
+// Seit 0.19.0 liest CloudForge die Werte jedes gewerteten Bildes aus dem
+// Protokoll von libvmaf und rechnet selbst Mittelwert und Perzentil aus
+// (vmafAusProtokoll) — libvmaf selbst kennt kein Perzentil.
 //
 // breite und hoehe sind die Masse der Referenz (seit 0.17.0 die des Ergebnisses,
 // also nach maxAufloesung): Ist sie kleiner als 1080p, wird
 // auf 1080p vergrössert gemessen (seit 0.12.0, siehe vmafMessgroesse).
-func VMAFMessen(ctx context.Context, probe, referenz string, breite, hoehe int, e Einstellungen) (float64, error) {
-	// Alle Kerne: ffmpeg läuft mit niedrigster Priorität (schonenderBefehl),
-	// der Desktop behält trotzdem Vorrang.
-	filter := vmafFilter(breite, hoehe, runtime.NumCPU())
+func VMAFMessen(ctx context.Context, probe, referenz string, breite, hoehe int, e Einstellungen) (VMAFWerte, error) {
+	// Das Protokoll entsteht neben der Probe. Sein Name geht OHNE Pfad in den
+	// Filter: Ein Doppelpunkt oder Komma im Pfad würde den Filter zerbrechen
+	// (Universal-Lektion). Deshalb läuft ffmpeg im Ordner der Probe, und die
+	// beiden Eingänge bekommen ihren vollen Pfad.
+	ordner := filepath.Dir(probe)
+	protokollPfad := filepath.Join(ordner, vmafProtokollName)
+	defer os.Remove(protokollPfad)
+	probeVoll, err := filepath.Abs(probe)
+	if err != nil {
+		return VMAFWerte{}, err
+	}
+	referenzVoll, err := filepath.Abs(referenz)
+	if err != nil {
+		return VMAFWerte{}, err
+	}
 
+	// Alle Kerne: ffmpeg läuft mit niedrigster Priorität (schonenderBefehl),
+	// der Desktop behält trotzdem Vorrang. Auch mit mehreren Dateien
+	// gleichzeitig nicht aufgeteilt — beim Kodieren hat Aufteilen gemessen
+	// geschadet (siehe svtParameter), die Messung ist nur ein kurzer Teil.
 	args := []string{
 		"-nostdin", "-hide_banner", "-nostats",
-		"-i", probe,
-		"-i", referenz,
-		"-lavfi", filter,
+		"-i", probeVoll,
+		"-i", referenzVoll,
+		"-lavfi", vmafFilter(breite, hoehe, runtime.NumCPU(), vmafProtokollName),
 		"-f", "null", "-",
 	}
 
 	befehl := schonenderBefehl(ctx, e.FFmpegPfad, args...)
+	befehl.Dir = ordner
 	var ausgabe strings.Builder
 	befehl.Stdout = &ausgabe
 	befehl.Stderr = &ausgabe
 
 	if err := befehl.Run(); err != nil {
 		if ctx.Err() != nil {
-			return 0, ErrAbgebrochen
+			return VMAFWerte{}, ErrAbgebrochen
 		}
-		return 0, fmt.Errorf("VMAF-Messung fehlgeschlagen: %w (%s)", err, letzteZeilen(ausgabe.String(), 3))
+		return VMAFWerte{}, fmt.Errorf("VMAF-Messung fehlgeschlagen: %w (%s)", err, letzteZeilen(ausgabe.String(), 3))
 	}
-	return vmafAusAusgabe(ausgabe.String())
+	inhalt, err := os.ReadFile(protokollPfad)
+	if err != nil {
+		return VMAFWerte{}, fmt.Errorf("VMAF-Messung ohne Protokoll: %w (%s)", err, letzteZeilen(ausgabe.String(), 3))
+	}
+	return vmafAusProtokoll(inhalt, e.VMAFPerzentil)
+}
+
+// vmafProtokollName: libvmafs Protokoll mit dem Wert jedes gewerteten Bildes.
+// Jede Datei hat ihren eigenen Arbeitsplatz, und ihre Messungen laufen
+// nacheinander — ein fester Name genügt.
+const vmafProtokollName = "vmaf-bildwerte.json"
+
+// VMAFWerte ist das Ergebnis einer Messung.
+type VMAFWerte struct {
+	// Wert vergleicht Auto-CQ mit dem Ziel: das untere Perzentil aus
+	// vmafPerzentil, bei vmafPerzentil=0 der Mittelwert.
+	Wert float64
+	// Mittel ist immer der Mittelwert — fürs Protokoll und zum Vergleich mit
+	// den Läufen bis 0.18.0, die nur ihn kannten.
+	Mittel float64
+}
+
+// vmafAusProtokoll liest das JSON-Protokoll von libvmaf (log_fmt=json) und
+// rechnet Mittelwert und Perzentil über die gewerteten Bilder aus.
+func vmafAusProtokoll(inhalt []byte, perzentil int) (VMAFWerte, error) {
+	var protokoll struct {
+		Frames []struct {
+			Metrics struct {
+				VMAF *float64 `json:"vmaf"`
+			} `json:"metrics"`
+		} `json:"frames"`
+	}
+	if err := json.Unmarshal(inhalt, &protokoll); err != nil {
+		return VMAFWerte{}, fmt.Errorf("VMAF-Protokoll unlesbar: %w", err)
+	}
+	if len(protokoll.Frames) == 0 {
+		return VMAFWerte{}, fmt.Errorf("VMAF-Protokoll enthaelt keine Bildwerte")
+	}
+
+	werte := make([]float64, 0, len(protokoll.Frames))
+	summe := 0.0
+	for nummer, bild := range protokoll.Frames {
+		if bild.Metrics.VMAF == nil {
+			return VMAFWerte{}, fmt.Errorf("VMAF-Protokoll: Bild %d ohne VMAF-Wert", nummer)
+		}
+		wert := *bild.Metrics.VMAF
+		if wert < 0 || wert > 100 {
+			return VMAFWerte{}, fmt.Errorf("VMAF-Wert %v liegt ausserhalb von 0 bis 100", wert)
+		}
+		werte = append(werte, wert)
+		summe += wert
+	}
+
+	mittel := summe / float64(len(werte))
+	if perzentil <= 0 {
+		return VMAFWerte{Wert: mittel, Mittel: mittel}, nil
+	}
+	return VMAFWerte{Wert: unteresPerzentil(werte, perzentil), Mittel: mittel}, nil
+}
+
+// unteresPerzentil liefert den Wert, unter dem prozent Prozent der Werte
+// liegen. Zwischen zwei Rangplätzen wird gerade verbunden (wie die
+// Tabellenkalkulation mit QUANTIL bzw. numpy ab Werk) — so springt das
+// Ergebnis nicht, wenn ein Bild mehr oder weniger gewertet wird. Die
+// Reihenfolge von werte bleibt unverändert.
+func unteresPerzentil(werte []float64, prozent int) float64 {
+	sortiert := slices.Clone(werte)
+	slices.Sort(sortiert)
+
+	rang := float64(prozent) / 100 * float64(len(sortiert)-1)
+	unten := int(rang)
+	oben := min(unten+1, len(sortiert)-1)
+	return sortiert[unten] + (sortiert[oben]-sortiert[unten])*(rang-float64(unten))
 }
 
 // Das VMAF-Standardmodell ist für ein Bild gebaut, das einen 1080p-Schirm füllt.
@@ -356,41 +481,18 @@ func geradeRunden(wert float64) int {
 // vmafFilter baut den Messgraphen. Beide Seiten werden nach Bildnummer gepaart
 // (siehe VMAFMessen) und, wo nötig, mit demselben Filter vergrössert — sonst
 // würde der Unterschied der Filter mitgemessen statt der Kodierfehler.
-func vmafFilter(breite, hoehe, threads int) string {
+// protokoll ist ein Dateiname ohne Pfad (siehe VMAFMessen).
+func vmafFilter(breite, hoehe, threads int, protokoll string) string {
 	const nachNummer = "settb=1/25,setpts=N" // Zeitbasis beliebig, Hauptsache gleich
-	const jedesNteBild = 3
+	const jedesNteBild = 4
 
 	vorbereitung := nachNummer
 	if zielBreite, zielHoehe, vergroessern := vmafMessgroesse(breite, hoehe); vergroessern {
 		vorbereitung += fmt.Sprintf(",scale=%d:%d:flags=bicubic", zielBreite, zielHoehe)
 	}
 	return fmt.Sprintf(
-		"[0:v]%s[probe];[1:v]%s[ref];[probe][ref]libvmaf=n_threads=%d:n_subsample=%d",
-		vorbereitung, vorbereitung, threads, jedesNteBild)
-}
-
-// vmafAusAusgabe sucht den Punktwert in der ffmpeg-Ausgabe.
-func vmafAusAusgabe(ausgabe string) (float64, error) {
-	const marke = "VMAF score: "
-
-	stelle := strings.LastIndex(ausgabe, marke)
-	if stelle < 0 {
-		return 0, fmt.Errorf("kein VMAF-Wert in der Ausgabe gefunden (%s)", letzteZeilen(ausgabe, 3))
-	}
-
-	rest := ausgabe[stelle+len(marke):]
-	if ende := strings.IndexAny(rest, "\r\n "); ende >= 0 {
-		rest = rest[:ende]
-	}
-
-	wert, err := strconv.ParseFloat(strings.TrimSpace(rest), 64)
-	if err != nil {
-		return 0, fmt.Errorf("VMAF-Wert %q unlesbar", rest)
-	}
-	if wert < 0 || wert > 100 {
-		return 0, fmt.Errorf("VMAF-Wert %v liegt ausserhalb von 0 bis 100", wert)
-	}
-	return wert, nil
+		"[0:v]%s[probe];[1:v]%s[ref];[probe][ref]libvmaf=n_threads=%d:n_subsample=%d:log_fmt=json:log_path=%s",
+		vorbereitung, vorbereitung, threads, jedesNteBild, protokoll)
 }
 
 // ffmpegLaufen startet ffmpeg und liefert, was es an Fehlermeldungen

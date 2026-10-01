@@ -63,7 +63,7 @@ Jede Datei durchläuft fünf Schritte:
 | Schritt | Was passiert |
 |---|---|
 | **1. Datei holen** | Kopie aus dem Cloud-Ordner auf die lokale Platte. Auf dem Cloud-Ordner selbst wird nie gerechnet. Kommt dabei 10 Minuten lang kein einziges Byte an (Cloud hängt), gibt CloudForge diese Datei auf und macht mit der nächsten weiter, statt ewig zu warten. |
-| **2. Qualität messen** | Kurze Stücke an 5 Stellen des Films werden probeweise umgewandelt und per **VMAF** (ein Maß für die Bildqualität, 100 = wie das Original) verglichen. Gewählt wird der höchste **CRF** (Kompressionsstufe), der das Ziel mindestens hält – ab Werk VMAF 95. Danach steht auch fest, wie groß das Ergebnis etwa wird; spart es zu wenig, wird die Datei nur umgepackt. Liegt die Vorhersage knapp an der Schwelle, prüft eine Größenprobe an 20 Stellen über den ganzen Film nach, bevor umgewandelt wird. |
+| **2. Qualität messen** | Kurze Stücke an 5 Stellen des Films werden probeweise umgewandelt und per **VMAF** (ein Maß für die Bildqualität, 100 = wie das Original) verglichen. Gewählt wird der höchste **CRF** (Kompressionsstufe), der das Ziel mindestens hält – ab Werk ein 5-%-Perzentil von 92: 95 % der gemessenen Bilder erreichen mindestens VMAF 92. Danach steht auch fest, wie groß das Ergebnis etwa wird; spart es zu wenig, wird die Datei nur umgepackt. Liegt die Vorhersage knapp an der Schwelle, prüft eine Größenprobe an 20 Stellen über den ganzen Film nach, bevor umgewandelt wird. |
 | **3. Umwandeln** | SVT-AV1, ab Werk preset 9 und 10 Bit (gegen Streifen in Farbverläufen). Ton, Untertitel, Kapitel und Anhänge (etwa Schriften) werden 1:1 übernommen. Einzige Ausnahme: MP4-Textuntertitel kann MKV nicht aufnehmen, sie kommen als SRT an (gleicher Text, gleiche Zeiten). Ein eingebettetes Vorschaubild entfällt. Auf Wunsch wird dabei verkleinert (`maxAufloesung`, etwa 4K auf 1080p); die Farbangaben der Quelle – auch HDR – gehen unverändert mit. |
 | **4. Prüfen** | Das Ergebnis wird gegen das Original geprüft: Größe, Spieldauer, alle Spuren. |
 | **5. Ergebnis ablegen** | Hochladen unter einem Zwischennamen – unter seinem richtigen Namen erscheint das Ergebnis erst, wenn es vollständig da ist. Erst dann wandert das Original nach `originals/`. |
@@ -143,17 +143,22 @@ Die Einstellungen stehen in `~/cloudforge/cloudforge.ini`; jeder Eintrag ist dor
 
 | Eintrag | Ab Werk | Bedeutung |
 |---|---|---|
-| `zielVMAF` | `95` | Qualitätsziel, gilt als Untergrenze. 93 = sichtbar weicher, 98 = kaum vom Original zu unterscheiden. |
+| `vmafPerzentil` | `5` | Woran Auto-CQ misst: am 5-%-Perzentil der Bildwerte, damit einzelne schwache Szenen nicht im Durchschnitt untergehen. `0` = am Mittelwert wie bis 0.18.0. |
+| `zielVMAFPerzentil` | `92` | Qualitätsziel für das Perzentil, gilt als Untergrenze. 92 ergibt im Schnitt so große Dateien wie Mittelwert 96 (gemessen an 6 Filmen). |
+| `zielVMAF` | `95` | Qualitätsziel für den Mittelwert (nur mit `vmafPerzentil=0`). 93 = sichtbar weicher, 98 = kaum vom Original zu unterscheiden. |
 | `originalBehandlung` | `verschieben` | `verschieben` (nach `originals/`), `loeschen` oder `behalten` |
-| `mindestErsparnisProzent` | `15` | Wird eine Datei nicht mindestens so viel kleiner, wird sie nur verlustfrei umgepackt. |
+| `mindestErsparnisProzent` | `10` | Wird eine Datei nicht mindestens so viel kleiner, wird sie nur verlustfrei umgepackt. |
 | `kostenDeckelProzent` | `0` (aus) | Deckel wie bei NVENCForge: das neue Bild darf höchstens so viel Prozent des alten kosten – notfalls unter dem Qualitätsziel. |
 | `messfensterAnzahl` | `5` | An so vielen Stellen wird die Qualität gemessen. |
 | `preset` | `9` | SVT-AV1-Preset: höher = schneller, aber größer bei gleicher Qualität. |
 | `bittiefe` | `10` | 10 Bit beugt Streifen in Farbverläufen vor, 8 ist etwas schneller. |
 | `maxAufloesung` | `0` | Höchste Auflösung des Ergebnisses (kurze Kante: 720, 1080, 1440, 2160; 0 = aus), wie in NVENCForge – größeres Material wird ohne Nachschärfen verkleinert. |
 | `kerne` | `6` | Wie stark SVT-AV1 parallel rechnet; 6 ist das Maximum. |
-| `varianceBoost`, `tune0` | `nein` | Zwei SVT-AV1-Schalter zum Ausprobieren – ob es besser aussieht, zeigt nur das Auge. |
+| `varianceBoost` | `ja` | SVT-AV1 gibt ruhigen, glatten und dunklen Flächen mehr Daten – dort entstehen sonst zuerst Klötzchen. Die Datei wird beim Qualitätsziel kaum größer. |
+| `tune0` | `nein` | SVT-AV1 auf den Seheindruck abgestimmt statt auf PSNR; etwa 3 % größer, ob es besser aussieht, zeigt nur das Auge. |
 | `varianceBoostStaerke`, `varianceOktil` | `2`, `5` | Feinregler des Variance Boost (Stärke 1–4, Oktil 1–8), wirken nur mit `varianceBoost=ja`. Ab Werk die Empfehlung von SVT-AV1 für echte Filme. |
+| `filmKorn` | `0` (aus) | Filmkorn von SVT-AV1 (1–50), nur im fertigen Film, nie in den Messproben; die Quelle wird dafür nicht entrauscht. Kostet viel Rechenzeit. |
+| `parallelDateien` | `1` | So viele Dateien gleichzeitig; die Kerne werden aufgeteilt. Lohnt sich vor allem auf großen Prozessoren. |
 | `vollpruefung` | `nein` | Jedes Ergebnis vor dem Ablegen komplett durchlesen (sicherer, aber langsam). |
 | `quellOrdner` | leer | Der Ordner für die Automatik. |
 
@@ -199,6 +204,8 @@ Die Tests mit echtem ffmpeg laufen nur, wenn `CLOUDFORGE_TEST_FFMPEG` und `CLOUD
 | Datei | Aufgabe |
 |---|---|
 | `main.go` | Aufrufe, Ablauf eines Laufs, Hilfe |
+| `schlange.go` | Warteschlange der Dateien, auch für mehrere gleichzeitig |
+| `versionen.go` | Fassungen von ffmpeg, SVT-AV1 und libvmaf fürs Protokoll |
 | `verarbeiten.go` | Der Weg einer Datei von der Cloud bis zurück in die Cloud – die fünf Schritte |
 | `autocq.go`, `deckel.go` | Auto-CQ (CRF-Suche nach VMAF-Ziel) und Kosten-Deckel |
 | `encoder.go` | Alle ffmpeg-Aufrufe an einer Stelle |

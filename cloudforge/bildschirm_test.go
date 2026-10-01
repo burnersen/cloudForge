@@ -39,30 +39,87 @@ func TestSichtbarKuerzenZaehltBalkenzeichenEinfach(t *testing.T) {
 // testUebersicht baut eine Anzeige mitten im Umwandeln der 2. von 5 Dateien,
 // mit einem langen Verlauf — ohne dass etwas aufs Terminal geschrieben wird.
 func testUebersicht(jetzt time.Time) *Anzeige {
-	u := &uebersicht{}
+	a := NeueAnzeige()
+	a.amTerminal = true
+	a.uebersicht = &uebersicht{dateiGesamt: 5}
 	for i := 1; i <= 12; i++ {
-		u.verlauf = append(u.verlauf, fmt.Sprintf(" OK     Film%02d.mp4  5,84 GB → 2,81 GB  (–52 %%)", i))
+		a.uebersicht.verlauf = append(a.uebersicht.verlauf, fmt.Sprintf(" OK     Film%02d.mp4  5,84 GB → 2,81 GB  (–52 %%)", i))
 	}
-	u.neueDatei(2, 5, "Beispielfilm_Teil2_1080P.mp4")
-	u.dateiBeginn = jetzt.Add(-15 * time.Minute)
-	u.dateiZeile("  5,04 GB  |  1080p mit 50 Bildern/s  |  54 Min Film  |  dauert etwa 55 Min")
-	u.dateiZeile("  1/5 Datei holen       5,04 GB (3 Min)")
-	u.dateiZeile("  2/5 Qualitaet messen  gewaehlt CRF 20, erwartet VMAF 98,2 (2 Min)")
-	u.quelleBytes = 5840 * mebibyte
-	u.dateiSchaetzung = 55 * time.Minute
-	u.danachSchaetzung = 2 * time.Hour
-	u.standMerken(Stand{
+	a.uebersicht.danachSchaetzung = 2 * time.Hour
+	imUmwandeln(a.platz, jetzt, 2, "Beispielfilm_Teil2_1080P.mp4")
+	return a
+}
+
+// imUmwandeln setzt einen Platz mitten ins Umwandeln einer Datei.
+func imUmwandeln(p *platz, jetzt time.Time, nummer int, name string) {
+	p.neueDatei(nummer, name)
+	p.dateiBeginn = jetzt.Add(-15 * time.Minute)
+	p.dateiZeilen = []string{
+		"  5,04 GB  |  1080p mit 50 Bildern/s  |  54 Min Film  |  dauert etwa 55 Min",
+		"  1/5 Datei holen       5,04 GB (3 Min)",
+		"  2/5 Qualitaet messen  gewaehlt CRF 20, erwartet VMAF 98,2 (2 Min)",
+	}
+	p.quelleBytes = 5840 * mebibyte
+	p.dateiSchaetzung = 55 * time.Minute
+	p.standMerken(Stand{
 		Anteil: 0.453, Position: 1487, Bild: 74350, BilderProSek: 74.8,
 		BitrateKbps: 5100, Tempo: 2.47, Rest: 12 * time.Minute, Bytes: 1300 * mebibyte,
 	})
+	p.schritt, p.schrittName, p.schrittLaeuft = "3/5 Umwandeln", "Umwandeln", true
+	p.beginn = jetzt.Add(-10 * time.Minute)
+}
 
-	return &Anzeige{
-		amTerminal:    true,
-		schritt:       "3/5 Umwandeln",
-		schrittName:   "Umwandeln",
-		schrittLaeuft: true,
-		beginn:        jetzt.Add(-10 * time.Minute),
-		uebersicht:    u,
+// Zwei Dateien gleichzeitig (parallelDateien=2, seit 0.19.0): Beide stehen mit
+// Fortschritt da, die Gesamtzeile einmal darunter — auch im kleinen Fenster.
+func TestUebersichtMitZweiDateien(t *testing.T) {
+	jetzt := time.Now()
+	a := testUebersicht(jetzt)
+	a.platz.dateiName = "" // der Platz für Meldungen ohne Datei
+	plaetze := a.Plaetze(2)
+	imUmwandeln(plaetze[0].platz, jetzt, 3, "Erster_Film.mp4")
+	imUmwandeln(plaetze[1].platz, jetzt, 4, "Zweiter_Film.mp4")
+	a.uebersicht.fertig = 2
+
+	text := strings.Join(a.uebersichtZeilen(80, 24, jetzt), "\n")
+	for _, teil := range []string{"Erster_Film.mp4", "Zweiter_Film.mp4", "[3/5]", "[4/5]",
+		"2 gleichzeitig, 2 von 5 fertig", "(2/5 fertig)", "Gesamt", "Aufhoeren"} {
+		if !strings.Contains(text, teil) {
+			t.Errorf("%q fehlt:\n%s", teil, text)
+		}
+	}
+	if n := strings.Count(text, "Position"); n != 2 {
+		t.Errorf("je Datei ein Fortschritt erwartet, %d gefunden:\n%s", n, text)
+	}
+	if n := strings.Count(text, "Gesamt"); n != 1 {
+		t.Errorf("die Gesamtzeile gehoert genau einmal darunter, %d gefunden:\n%s", n, text)
+	}
+	for _, masse := range [][2]int{{20, 5}, {80, 14}, {120, 40}} {
+		if zeilen := a.uebersichtZeilen(masse[0], masse[1], jetzt); len(zeilen) > masse[1] {
+			t.Errorf("%dx%d: %d Zeilen passen nicht", masse[0], masse[1], len(zeilen))
+		}
+	}
+
+	// Ist eine der beiden fertig und nichts mehr offen, sieht der Rest aus
+	// wie mit einer einzigen Datei — mit der Zahl der fertigen Dateien.
+	plaetze[0].PlatzFrei()
+	text = strings.Join(a.uebersichtZeilen(80, 24, jetzt), "\n")
+	if strings.Contains(text, "Erster_Film.mp4") || !strings.Contains(text, "Datei 4 von 5") {
+		t.Errorf("nur noch die zweite Datei erwartet:\n%s", text)
+	}
+}
+
+// Laufen mehrere Dateien, steht vor jeder Protokollzeile, zu welcher sie gehört.
+func TestVorsilbeNurBeiMehrerenDateien(t *testing.T) {
+	a := NeueAnzeige()
+	a.Datei(1, 3, "a.mp4")
+	if text := a.mitVorsilbe("  2/5 Qualitaet messen"); text != "  2/5 Qualitaet messen" {
+		t.Errorf("mit einer Datei keine Vorsilbe erwartet: %q", text)
+	}
+
+	b := a.Plaetze(2)[1]
+	b.Datei(2, 3, "b.mp4")
+	if text := b.mitVorsilbe("  FERTIG\n\n  Ergebnis: x"); text != "[2/3]   FERTIG\n\n[2/3]   Ergebnis: x" {
+		t.Errorf("Vorsilbe vor jeder nicht leeren Zeile erwartet: %q", text)
 	}
 }
 
@@ -118,7 +175,7 @@ func TestKleinesFensterBehaeltDenFortschritt(t *testing.T) {
 	// Viele Zeilen für die laufende Datei — mehr als das Fenster fasst. Sie
 	// dürfen den Fortschritt nicht nach unten hinausschieben.
 	for i := 0; i < 10; i++ {
-		a.uebersicht.dateiZeile(fmt.Sprintf("  Zusatzzeile %d", i))
+		a.dateiZeile(fmt.Sprintf("  Zusatzzeile %d", i))
 	}
 	text := strings.Join(a.uebersichtZeilen(80, 14, jetzt), "\n")
 	for _, teil := range []string{"45,3 %", "Position", "Tempo", "Gesamt", "Aufhoeren"} {
@@ -134,10 +191,10 @@ func TestKleinesFensterBehaeltDenFortschritt(t *testing.T) {
 func TestUebersichtBeimMessen(t *testing.T) {
 	jetzt := time.Now()
 	a := testUebersicht(jetzt)
-	a.uebersicht.neuerSchritt() // Messen hat keinen Prozentwert
+	a.neuerSchritt() // Messen hat keinen Prozentwert
 	a.schritt = "2/5 Qualitaet messen"
 	a.messungen = []string{"CRF 16 = 99,0", "CRF 26 = 97,0"}
-	a.uebersicht.laufendeMessung = 21
+	a.laufendeMessung = 21
 
 	text := strings.Join(a.uebersichtZeilen(80, 24, jetzt), "\n")
 	for _, teil := range []string{"Messungen", "CRF 16 = 99,0", "misst CRF 21"} {
@@ -153,8 +210,8 @@ func TestUebersichtBeimMessen(t *testing.T) {
 func TestUebersichtBeimKopieren(t *testing.T) {
 	jetzt := time.Now()
 	a := testUebersicht(jetzt)
-	a.uebersicht.neuerSchritt()
-	a.uebersicht.standMerken(Stand{Anteil: 0.5, Rest: 2 * time.Minute, Text: "2,92 GB von 5,84 GB"})
+	a.neuerSchritt()
+	a.standMerken(Stand{Anteil: 0.5, Rest: 2 * time.Minute, Text: "2,92 GB von 5,84 GB"})
 
 	text := strings.Join(a.uebersichtZeilen(80, 24, jetzt), "\n")
 	for _, teil := range []string{"50,0 %", "Menge", "2,92 GB von 5,84 GB"} {
@@ -169,8 +226,8 @@ func TestNachDemUmwandelnKeineRestzeitMehrFuerDieDatei(t *testing.T) {
 	// Schätzung für die ganze Datei darf die Gesamtzeit dann nicht aufblähen.
 	jetzt := time.Now()
 	a := testUebersicht(jetzt)
-	a.uebersicht.dateiSchaetzung = 5 * time.Hour // absichtlich viel zu hoch
-	a.uebersicht.neuerSchritt()                  // Umwandeln ist vorbei
+	a.dateiSchaetzung = 5 * time.Hour // absichtlich viel zu hoch
+	a.neuerSchritt()                  // Umwandeln ist vorbei
 
 	if zeile := a.gesamtZeile(jetzt); !strings.Contains(zeile, "ca. 2 Std 0 Min") {
 		t.Errorf("nur noch die 2 Std der folgenden Dateien erwartet: %q", zeile)
@@ -220,8 +277,7 @@ func TestGlaettePrognose(t *testing.T) {
 }
 
 func TestKopfZeileRechtsbuendig(t *testing.T) {
-	u := &uebersicht{dateiNummer: 2, dateiGesamt: 5}
-	zeile := kopfZeile(80, u)
+	zeile := kopfZeile(80, "Datei 2 von 5")
 	if n := sichtbareLaenge(zeile); n != 78 {
 		t.Errorf("78 sichtbare Zeichen erwartet, bekommen %d: %q", n, zeile)
 	}

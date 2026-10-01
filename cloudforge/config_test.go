@@ -23,18 +23,32 @@ func TestWerkswerteSindDieDesNutzers(t *testing.T) {
 		t.Errorf("Werkswerte weichen ab: preset %d, bittiefe %d, zielVMAF %v, Anker %d/%d",
 			e.Preset, e.Bittiefe, e.ZielVMAF, e.AnkerNiedrig, e.AnkerHoch)
 	}
-	if e.VarianceBoost || e.Tune0 {
-		t.Errorf("Variance Boost (%v) und tune 0 (%v) muessen ab Werk aus sein", e.VarianceBoost, e.Tune0)
+	// Seit 0.19.0 Variance Boost an (gegen Klötzchen in ruhigen Flächen),
+	// tune 0 weiter aus (kostet ~3 %, Nutzen nicht belegt).
+	if !e.VarianceBoost || e.Tune0 {
+		t.Errorf("Variance Boost (%v) muss ab Werk an, tune 0 (%v) aus sein", e.VarianceBoost, e.Tune0)
 	}
 	// Seit 0.18.0: Empfehlung der SVT-AV1-Doku für echte Filme (= Werk von SVT).
 	if e.VarianceBoostStaerke != 2 || e.VarianceOktil != 5 {
 		t.Errorf("Variance Boost Staerke %d / Oktil %d, erwartet 2 / 5", e.VarianceBoostStaerke, e.VarianceOktil)
 	}
 	// Den Kosten-Deckel (0.8.0 bis 0.11.1: 50 %) hat der Nutzer am 27.09.2026
-	// abgeschaltet — Qualität geht vor. Mindestersparnis seit 0.11.3 15 %
-	// (vorher 30), Messfenster 5 statt 3 (Vorhersage traf den Film besser).
-	if e.KostenDeckelProzent != 0 || e.MindestErsparnisProzent != 15 {
-		t.Errorf("Deckel %v / Mindestersparnis %v, erwartet 0 / 15", e.KostenDeckelProzent, e.MindestErsparnisProzent)
+	// abgeschaltet — Qualität geht vor. Mindestersparnis seit 0.19.0 10 %
+	// (seine INI; 0.11.3 bis 0.18.0 15, davor 30), Messfenster 5 statt 3
+	// (Vorhersage traf den Film besser).
+	if e.KostenDeckelProzent != 0 || e.MindestErsparnisProzent != 10 {
+		t.Errorf("Deckel %v / Mindestersparnis %v, erwartet 0 / 10", e.KostenDeckelProzent, e.MindestErsparnisProzent)
+	}
+	// Seit 0.19.0 (Nutzerwahl 01.10.2026): gemessen am 5-%-Perzentil, ohne
+	// Filmkorn (kostet viel Zeit), eine Datei nach der anderen.
+	if e.VMAFPerzentil != 5 || e.FilmKorn != 0 || e.ParallelDateien != 1 {
+		t.Errorf("Perzentil %d, Filmkorn %d, parallel %d - erwartet 5, 0, 1",
+			e.VMAFPerzentil, e.FilmKorn, e.ParallelDateien)
+	}
+	// Ziel 92 am 5-%-Perzentil = im Schnitt so gross wie Mittelwert 96
+	// (gemessen 01.10.2026 an 6 Filmen).
+	if e.ZielVMAFPerzentil != 92 {
+		t.Errorf("Ziel fuer das Perzentil %v, erwartet 92", e.ZielVMAFPerzentil)
 	}
 	if e.MessfensterAnzahl != 5 || e.MessfensterSek != 8 {
 		t.Errorf("Messfenster %d x %v s, erwartet 5 x 8 s", e.MessfensterAnzahl, e.MessfensterSek)
@@ -168,9 +182,10 @@ func TestINIHinUndZurueck(t *testing.T) {
 		QuellOrdner: []string{"/a", "/b c"}, ArbeitsOrdner: "/arbeit",
 		AusgabeOrdnerName: "aus", OriginalOrdnerName: "orig",
 		OriginalBehandlung: OriginalLoeschen,
-		Preset:             7, Kerne: 3, Bittiefe: 8, VarianceBoost: true, Tune0: true,
-		VarianceBoostStaerke: 3, VarianceOktil: 7,
-		ZielVMAF: 95.5, AnkerNiedrig: 18, AnkerHoch: 30, CRFMin: 12, CRFMax: 50,
+		Preset:             7, Kerne: 3, ParallelDateien: 2, Bittiefe: 8, VarianceBoost: true, Tune0: true,
+		VarianceBoostStaerke: 3, VarianceOktil: 7, FilmKorn: 6,
+		ZielVMAF: 95.5, VMAFPerzentil: 10, ZielVMAFPerzentil: 91.5,
+		AnkerNiedrig: 18, AnkerHoch: 30, CRFMin: 12, CRFMax: 50,
 		MessfensterAnzahl: 7, MessfensterSek: 9.5, PlateauToleranz: 0.3, PlateauMindestSpa: 4,
 		KostenDeckelProzent: 40, MindestErsparnisProzent: 22,
 		PlatzReserveGB: 33, Vollpruefung: true, MaxStundenProDatei: 5,
@@ -242,7 +257,7 @@ func TestVideoArgumenteNehmenDieBittiefe(t *testing.T) {
 	for _, fall := range faelle {
 		e := standardWerte()
 		e.Bittiefe = fall.bittiefe
-		args := videoArgumente(30, e)
+		args := videoArgumente(30, e, false)
 
 		stelle := slices.Index(args, "-pix_fmt")
 		if stelle < 0 || stelle+1 >= len(args) {
@@ -283,8 +298,9 @@ func TestAlteINIBekommtNeueSchluesselErgaenzt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, zeile := range []string{"\nbittiefe=10\n", "\nvollpruefung=nein\n", "\nvarianceBoost=nein\n",
-		"\nvarianceBoostStaerke=2\n", "\nvarianceOktil=5\n", "\ntune0=nein\n"} {
+	for _, zeile := range []string{"\nbittiefe=10\n", "\nvollpruefung=nein\n", "\nvarianceBoost=ja\n",
+		"\nvarianceBoostStaerke=2\n", "\nvarianceOktil=5\n", "\ntune0=nein\n",
+		"\nfilmKorn=0\n", "\nvmafPerzentil=5\n", "\nparallelDateien=1\n"} {
 		if !strings.Contains(string(nachErstemStart), zeile) {
 			t.Errorf("%q wurde nicht in die INI geschrieben:\n%s", strings.TrimSpace(zeile), nachErstemStart)
 		}
@@ -374,7 +390,7 @@ func TestSvtParameterNennenNurEingeschalteteSchalter(t *testing.T) {
 		e.VarianceBoost, e.Tune0 = fall.varianceBoost, fall.tune0
 		e.VarianceBoostStaerke, e.VarianceOktil = fall.staerke, fall.oktil
 
-		args := videoArgumente(30, e)
+		args := videoArgumente(30, e, false)
 		stelle := slices.Index(args, "-svtav1-params")
 		if stelle < 0 || stelle+1 >= len(args) {
 			t.Fatalf("kein -svtav1-params in %v", args)
@@ -439,6 +455,7 @@ func TestVarianceReglerLesen(t *testing.T) {
 // sonst sähe es aus, als hätten sie gewirkt.
 func TestEinstellungenTextNenntFeinreglerNurMitVarianceBoost(t *testing.T) {
 	e := standardWerte()
+	e.VarianceBoost = false // ab Werk an (seit 0.19.0)
 	e.VarianceBoostStaerke, e.VarianceOktil = 3, 7
 
 	if text := einstellungenText(e); !strings.Contains(text, "Variance Boost aus,") {

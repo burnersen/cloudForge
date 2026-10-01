@@ -96,7 +96,7 @@ func GroessenProbe(ctx context.Context, quelle string, info VideoInfo, crf int, 
 	probe := filepath.Join(arbeitsOrdner, "groessenprobe.mkv")
 	defer os.Remove(probe)
 
-	args := append(fensterArgumente(quelle, fenster, verkleinernFilter(info, e)), videoArgumente(crf, e)...)
+	args := append(fensterArgumente(quelle, fenster, verkleinernFilter(info, e)), videoArgumente(crf, e, false)...)
 	args = append(args, probe)
 	gesamtSek := 0.0
 	for _, f := range fenster {

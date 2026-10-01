@@ -40,6 +40,24 @@ type Ablauf struct {
 	// Während umgewandelt wird, holt der Ablauf sie schon (vorab.go).
 	Naechste string
 	vorab    *VorabKopie
+
+	// Platzbuch ist gesetzt, wenn mehrere Dateien gleichzeitig laufen
+	// (seit 0.19.0): Dann merkt sich jede vor, wie viel Platz sie braucht.
+	Platzbuch *Platzbuch
+}
+
+// platzSichern prüft, ob für diese Datei genug Platz frei ist — mit
+// Platzbuch zusätzlich zu dem, was die gleichzeitig laufenden Dateien schon
+// vorgemerkt haben; dann wird notfalls gewartet, bis eine davon fertig ist.
+// freigeben gibt die Vormerkung zurück und darf mehrfach aufgerufen werden.
+func (a *Ablauf) platzSichern(ctx context.Context, bedarf int64) (freigeben func(), err error) {
+	e := a.Einstellungen
+	if a.Platzbuch == nil {
+		return func() {}, PlatzPruefen(e.ArbeitsOrdner, bedarf, e)
+	}
+	return a.Platzbuch.Vormerken(ctx, e.ArbeitsOrdner, bedarf, e, func() {
+		a.Anzeige.Zeile("  Wartet auf Platz auf der Platte, bis eine der anderen Dateien fertig ist ...")
+	})
 }
 
 // DateiErgebnis fasst zusammen, was bei einer Datei herauskam.
@@ -52,12 +70,22 @@ type DateiErgebnis struct {
 
 // autoCQText fasst die Wahl von Auto-CQ für die Anzeige zusammen.
 func autoCQText(a AutoCQErgebnis) string {
-	text := fmt.Sprintf("gewaehlt CRF %d, erwartet VMAF %s", a.CRF, komma(a.ErwarteterVMAF, 1))
+	text := fmt.Sprintf("gewaehlt CRF %d, erwartet %s", a.CRF, vmafText(a.ErwarteterVMAF, a.ErwarteterMittelwert()))
 	if a.AnteilQuelle > 0 {
 		text += fmt.Sprintf(", ~%.0f %% der Quelle", a.AnteilQuelle*100)
 	}
 	if a.Gedeckelt {
 		text += ", gedeckelt"
+	}
+	return text
+}
+
+// vmafText nennt einen VMAF-Wert. Wurde am Perzentil gemessen, steht der
+// Mittelwert dahinter — so bleibt er mit den Läufen bis 0.18.0 vergleichbar.
+func vmafText(wert, mittel float64) string {
+	text := "VMAF " + komma(wert, 1)
+	if mittel > 0 && komma(mittel, 1) != komma(wert, 1) {
+		text += " (Mittel " + komma(mittel, 1) + ")"
 	}
 	return text
 }
@@ -164,9 +192,11 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 	if vorab != nil {
 		bedarf = info.GroesseBytes
 	}
-	if err := PlatzPruefen(e.ArbeitsOrdner, bedarf, e); err != nil {
+	platzFrei, err := a.platzSichern(ctx, bedarf)
+	if err != nil {
 		return fehler("Platz", err)
 	}
+	defer platzFrei() // erst nach dem Aufräumen des Arbeitsplatzes (defer: zuletzt)
 
 	// Ein eigener Arbeitsplatz für diese Datei, der am Ende zuverlässig
 	// wieder verschwindet — auch wenn unterwegs etwas schiefgeht.
@@ -204,6 +234,9 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 	if autoCQ.Gedeckelt || !autoCQ.ZielErreichbar || autoCQ.DeckelNichtEinhaltbar {
 		anz.Zeile("  Hinweis: %s", autoCQ.Hinweis)
 	}
+	if anschlag := crfAnschlagText(autoCQ, e); anschlag != "" {
+		anz.Zeile("  %s", anschlag)
+	}
 
 	// Lohnt es sich? Aus den Messproben hochgerechnet — BEVOR eine halbe
 	// Stunde gerechnet wird. Am 25.09.2026 lief eine dünne Quelle 20 Minuten,
@@ -220,8 +253,11 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 	}
 
 	// 3. Die ganze Datei umwandeln. Die Notbremse verhindert, dass ein
-	//    einzelnes Schwergewicht die Warteschlange tagelang blockiert.
-	encodeCtx, aufgeben := context.WithTimeout(ctx, time.Duration(e.MaxStundenProDatei)*time.Hour)
+	//    einzelnes Schwergewicht die Warteschlange tagelang blockiert. Laufen
+	//    mehrere Dateien gleichzeitig, braucht jede entsprechend länger —
+	//    die Notbremse wächst deshalb mit (seit 0.19.0).
+	notbremse := time.Duration(e.MaxStundenProDatei*max(1, e.ParallelDateien)) * time.Hour
+	encodeCtx, aufgeben := context.WithTimeout(ctx, notbremse)
 	defer aufgeben()
 
 	// Während umgewandelt wird, schon die nächste Datei holen — mit dem
@@ -237,6 +273,7 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 		UntertitelCodecs: info.UntertitelCodecs,
 		Verkleinern:      verkleinernFilter(info, e),
 		Farbangaben:      farbArgumente(info),
+		MitFilmKorn:      true, // nur hier, nie in den Proben (filmKorn=0 = aus)
 	}
 	if err := Kodieren(encodeCtx, auftrag, e, info.DauerSek, anz.Stand); err != nil {
 		return fehler("Umwandeln fehlgeschlagen", err)
@@ -279,6 +316,7 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 		ErgebnisBytes: ergebnisBytes,
 		CRF:           autoCQ.CRF,
 		VMAF:          autoCQ.ErwarteterVMAF,
+		VMAFMittel:    autoCQ.ErwarteterMittelwert(),
 		Meldung:       meldung,
 		Bilder:        int64(math.Round(bilder)),
 		RechenSek:     time.Since(beginn).Seconds(),

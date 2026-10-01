@@ -32,6 +32,14 @@ const (
 	maxKerneHart      = 7  // SVT-AV1 4.2 nutzt ohnehin höchstens 6; 7 bleibt erlaubt, damit alte INIs laden
 	minMessfensterSec = 8  // Projekt-Lektion: kürzere Fenster verschieben die CRF-Wahl
 	maxCRFHart        = 63 // SVT-AV1-Skala
+	maxFilmKorn       = 50 // SVT-AV1 film-grain
+	// Über die Hälfte hinaus wäre es kein "unteres" Perzentil mehr, sondern
+	// läge über dem Median.
+	maxVMAFPerzentil = 50
+	// Jede Datei braucht ihren eigenen Platz auf der Platte und ihren Anteil
+	// an den Kernen; mehr als 8 gleichzeitig teilt selbst ein grosser Rechner
+	// zu fein auf.
+	maxParallelDateien = 8
 )
 
 // Einstellungen hält alle Werte, die das Programm zur Laufzeit braucht.
@@ -50,20 +58,26 @@ type Einstellungen struct {
 	OriginalBehandlung string
 
 	// Encoder
-	Preset        int
-	Kerne         int
-	Bittiefe      int  // 8 oder 10
-	MaxAufloesung int  // kurze Kante des Ergebnisses höchstens (bildformat.go), 0 = wie die Quelle
-	VarianceBoost bool // SVT-AV1: ruhigen, dunklen Flächen mehr Bits geben
+	Preset          int
+	Kerne           int
+	ParallelDateien int  // so viele Dateien gleichzeitig (seit 0.19.0), 1 = nacheinander
+	Bittiefe        int  // 8 oder 10
+	MaxAufloesung   int  // kurze Kante des Ergebnisses höchstens (bildformat.go), 0 = wie die Quelle
+	VarianceBoost   bool // SVT-AV1: ruhigen, dunklen Flächen mehr Bits geben
 	// Feinregler des Variance Boost (seit 0.18.0), wirken nur mit VarianceBoost
 	VarianceBoostStaerke int  // SVT variance-boost-strength, 1 bis 4
 	VarianceOktil        int  // SVT variance-octile, 1 bis 8
 	Tune0                bool // SVT-AV1 tune 0 (Seheindruck) statt tune 1 (PSNR)
+	FilmKorn             int  // SVT film-grain 1 bis 50 nur im finalen Encode, 0 = aus (seit 0.19.0)
 	ZielVMAF             float64
-	AnkerNiedrig         int // CRF des besseren Ankers
-	AnkerHoch            int // CRF des sparsameren Ankers
-	CRFMin               int
-	CRFMax               int
+	// Seit 0.19.0: 0 = Auto-CQ misst am Mittelwert (ZielVMAF), sonst am
+	// unteren Perzentil der Bildwerte (ZielVMAFPerzentil), siehe vmafZiel.
+	VMAFPerzentil     int
+	ZielVMAFPerzentil float64
+	AnkerNiedrig      int // CRF des besseren Ankers
+	AnkerHoch         int // CRF des sparsameren Ankers
+	CRFMin            int
+	CRFMax            int
 
 	// Auto-CQ-Verhalten
 	MessfensterAnzahl int
@@ -100,10 +114,28 @@ type Einstellungen struct {
 //     drei Stellen trafen den Schnitt des Films nicht. Messen: 2,5 statt 2,2 Min.
 //   - 10 Bit gegen Streifen in Farbverläufen, kostet dort nur ~20 % Tempo.
 //   - preset 9: 1080p50 mit 1,27x Echtzeit, preset 8 wäre knapp darunter.
-//   - Variance Boost und tune 0 aus: der Nutzer testet sie selbst.
+//   - Variance Boost an (seit 0.19.0, vorher aus): Er gibt kontrastarmen,
+//     glatten Flächen mehr Bits — genau dort blockt AV1 zuerst, und das Ziel
+//     des Nutzers ist ein Bild ohne Klötzchen in ruhigen Flächen und Schatten.
+//     Beim Qualitätsziel wurde die Datei damit kaum grösser (gemessen
+//     26.09.2026), der Nutzer fährt ihn seit 26.09. selbst.
+//   - tune 0 bleibt aus: Es kostet beim selben Ziel etwa 3 % Grösse, und ob
+//     es besser aussieht, ist nicht belegt — der Nutzer testet es selbst.
 //   - Variance Boost Stärke 2, Oktil 5 (seit 0.18.0): die Empfehlung der
 //     SVT-AV1-Doku für echte Filme und zugleich die Werkswerte von SVT-AV1 —
 //     wer nur varianceBoost=ja setzt, bekommt dasselbe wie bis 0.17.0.
+//   - Auto-CQ misst seit 0.19.0 am 5-%-Perzentil der Bildwerte statt am
+//     Mittelwert (Nutzerwunsch 01.10.2026): Der Mittelwert kann gut aussehen,
+//     während einzelne Szenen deutlich schlechter sind. Ziel 92, gemessen
+//     01.10.2026 an je 5 x 8 s aus 6 Filmen (preset 9, 10 Bit, seine
+//     Schalter): Mit 92 werden die Dateien im Schnitt so gross wie mit
+//     Mittelwert 96 (seiner INI), -0,6 % — gleichmässige Filme bis 19 %
+//     kleiner, Filme mit einzelnen schwachen Szenen bis 33 % grösser. Die
+//     erste Schätzung 93 hätte im Schnitt 18 % mehr gekostet.
+//   - Filmkorn aus: Es kostet bei preset 9 an einem echten 1080p50-Film das
+//     8,5-fache an Zeit (gemessen 01.10.2026).
+//   - Eine Datei nach der anderen: Mehrere gleichzeitig muss der Nutzer
+//     bewusst einschalten.
 //
 // Die frühere Aussage "VMAF 96 ist nicht erreichbar" (21.09., Contabo) war
 // vermutlich ein Messfehler (Bildpaarung nach Zeit, siehe VMAFMessen).
@@ -124,13 +156,17 @@ func standardWerte() Einstellungen {
 
 		Preset:               9,
 		Kerne:                6,
+		ParallelDateien:      1,
 		Bittiefe:             10,
 		MaxAufloesung:        0, // aus: niemandem ungefragt die Auflösung nehmen, mit "loeschen" wäre sie weg
-		VarianceBoost:        false,
+		VarianceBoost:        true,
 		VarianceBoostStaerke: 2,
 		VarianceOktil:        5,
 		Tune0:                false,
+		FilmKorn:             0,
 		ZielVMAF:             95,
+		VMAFPerzentil:        5,
+		ZielVMAFPerzentil:    92,
 		AnkerNiedrig:         22,
 		AnkerHoch:            32,
 		CRFMin:               14,
@@ -144,11 +180,12 @@ func standardWerte() Einstellungen {
 		// Den Deckel (bis 0.11.1: 50) hat der Nutzer am 27.09.2026
 		// abgeschaltet: gedeckelte Clips mit VMAF 93 sahen für ihn deutlich
 		// schlechter aus als das Original — die Qualität geht vor. Begrenzt
-		// wird nur noch über die Mindestersparnis: seit 0.11.3 15 % (vorher 30,
-		// Nutzerwahl 27.09.2026) — darunter lohnt die
-		// Rechenzeit kaum, und das Original bleibt verlustfrei erhalten.
+		// wird nur noch über die Mindestersparnis: seit 0.19.0 10 % (die Wahl
+		// des Nutzers in seiner INI; 0.11.3 bis 0.18.0 15 %, davor 30) —
+		// darunter lohnt die Rechenzeit kaum, und das Original bleibt
+		// verlustfrei erhalten.
 		KostenDeckelProzent:     0,
-		MindestErsparnisProzent: 15,
+		MindestErsparnisProzent: 10,
 
 		PlatzReserveGB:     20,
 		Vollpruefung:       false,
@@ -188,22 +225,30 @@ func iniAufbau() []iniZeile {
 			"SVT-AV1-Preset: hoeher = schneller, aber groesser bei gleicher Qualitaet.\n# 11 ist das schnellste - 12 und 13 rechnet SVT-AV1 4.2 intern als 11.\n# Gemessen 25.09.2026 auf dem netcup-Server (8 Kerne), 1080p mit 50\n# Bildern/s, 10 Bit: preset 8 = 0,91x, preset 9 = 1,27x Echtzeit.\n# Filme mit 30 Bildern/s laufen entsprechend schneller (preset 9: 2,2x)."},
 		{"kerne", func(e Einstellungen) string { return strconv.Itoa(e.Kerne) },
 			"Parallelitaet fuer SVT-AV1 (dessen Wert lp), keine feste Kernzahl.\n# 6 ist das Maximum - hoehere Werte kappt SVT-AV1 4.2 auf 6. Ein Film\n# belegt damit gut 6 der 8 Kerne (netcup, gemessen 25.09.2026)."},
+		{"parallelDateien", func(e Einstellungen) string { return strconv.Itoa(e.ParallelDateien) },
+			"Wie viele Dateien gleichzeitig umgewandelt werden. 1 = eine nach der\n# anderen (ab Werk). Lohnt sich auf grossen Prozessoren: Ein einzelner Film\n# nutzt bei SVT-AV1 nur gut 6 Kerne, egal wie viele der Rechner hat.\n# Gemessen 01.10.2026 auf dem netcup-Server (8 Kerne), 1080p50, preset 9:\n# 2 gleichzeitig = 17 % mehr Durchsatz; jede einzelne Datei dauert dabei\n# fast doppelt so lange. Die Kerne werden nicht aufgeteilt - mit\n# aufgeteilten Threads (lp 3 je Datei) war es 6 % LANGSAMER als nacheinander.\n# Faustregel: etwa eine Datei je 4 Kerne des Rechners (8 Kerne: 2).\n# Dabei entfaellt das Vorab-Holen der naechsten Datei (die anderen rechnen\n# derweil), jede Datei braucht ihren eigenen Platz auf der Platte und\n# Arbeitsspeicher, und maxStundenProDatei gilt mal parallelDateien.\n# -analyse misst immer eine nach der anderen. Erlaubt: 1 bis 8."},
 		{"bittiefe", func(e Einstellungen) string { return strconv.Itoa(e.Bittiefe) },
 			"Bittiefe des Ergebnisses: 8 oder 10. 10 Bit beugt Streifen in\n# Farbverlaeufen (Banding) vor - auch bei 8-Bit-Quellen. Gemessen 25.09.2026\n# auf dem netcup-Server: 10 Bit kostet etwa 20 % Tempo, die Datei wird\n# nicht groesser. (Auf dem alten Contabo-VPS waren es noch 50 % Tempo.)"},
 		{"maxAufloesung", func(e Einstellungen) string { return strconv.Itoa(e.MaxAufloesung) },
 			"Hoechste Aufloesung des Ergebnisses (kurze Kante), wie maxResolution in\n# NVENCForge: Groesseres Material wird verkleinert, das Seitenverhaeltnis\n# bleibt, vergroessert wird nie. 1080 = hoechstens 1920 x 1080 (hochkant\n# 1080 x 1920). Ohne Nachschaerfen. Erlaubt: 0 (aus, Aufloesung wie die\n# Quelle), 720, 1080, 1440, 2160. Ab Werk 0.\n# Achtung: Mit originalBehandlung=loeschen ist die hoehere Aufloesung danach\n# weg. Was nur umgepackt wird, behaelt seine Aufloesung."},
 		{"varianceBoost", func(e Einstellungen) string { return jaNein(e.VarianceBoost) },
-			"Variance Boost (SVT-AV1): gibt ruhigen, glatten und dunklen Flaechen (Waende,\n# Haut, Schatten) mehr Bits - genau dort entstehen sonst Kloetzchen und\n# Streifen. Gemessen 26.09.2026 an einem 1080p50-Film: bei gleichem CRF\n# 26 % groesser und +0,56 VMAF; beim VMAF-Ziel waehlt Auto-CQ dafuer einen\n# hoeheren CRF, die Datei wird dann kaum groesser. Ob es besser aussieht,\n# zeigt nur das Auge. ja oder nein. Mit welcher Einstellung eine Datei\n# entstand, steht im Protokoll."},
+			"Variance Boost (SVT-AV1): gibt ruhigen, glatten und dunklen Flaechen (Waende,\n# Haut, Schatten) mehr Bits - genau dort entstehen sonst Kloetzchen und\n# Streifen. Gemessen 26.09.2026 an einem 1080p50-Film: bei gleichem CRF\n# 26 % groesser und +0,56 VMAF; beim VMAF-Ziel waehlt Auto-CQ dafuer einen\n# hoeheren CRF, die Datei wird dann kaum groesser. ja oder nein, ab Werk ja\n# (seit 0.19.0, vorher nein). Mit welcher Einstellung eine Datei entstand,\n# steht im Protokoll."},
 		{"varianceBoostStaerke", func(e Einstellungen) string { return strconv.Itoa(e.VarianceBoostStaerke) },
 			"Staerke des Variance Boost (SVT-AV1: variance-boost-strength). Wirkt nur\n# mit varianceBoost=ja - ein- und ausgeschaltet wird nur dort. Laut SVT-Doku:\n#   1 = mild   - fuer Zeichentrick und sehr glatte, ruhige Bilder\n#   2 = sanft  - passt zu den meisten echten Filmen (EMPFOHLEN, ab Werk)\n#   3 = mittel - fuer Standbilder und Filme, in denen sich sehr kontrast-\n#                reiche und sehr kontrastarme Szenen abwechseln (Horror)\n#   4 = stark  - sehr aggressiv, nur fuer Sonderfaelle, in denen Details\n#                in ruhigen Flaechen ueber allem stehen\n# Hoeher = ruhige Flaechen bekommen mehr Bits. Mit Staerke 2 blieb die Datei\n# beim VMAF-Ziel etwa gleich gross (gemessen 26.09.2026), die Bits werden\n# also eher umverteilt. Ob es besser aussieht, zeigt nur das Auge.\n# Erlaubt: 1 bis 4."},
 		{"varianceOktil", func(e Einstellungen) string { return strconv.Itoa(e.VarianceOktil) },
 			"Wie waehlerisch der Variance Boost ist (SVT-AV1: variance-octile). Wirkt\n# nur mit varianceBoost=ja. SVT betrachtet jeden Bildblock in Achteln:\n# 1 = ein ruhiges Achtel genuegt, damit der Block mehr Bits bekommt,\n# 8 = der ganze Block muss ruhig sein. Kleiner = mehr Bloecke bekommen mehr,\n# auch unruhige - die Datei waechst. Groesser = sparsamer, aber einzelne\n# ruhige Stellen koennen schlechter aussehen als ihre Umgebung. Die SVT-Doku\n# empfiehlt 4 bis 7; 5 ist EMPFOHLEN und ab Werk (zugleich der Werkswert\n# von SVT-AV1). Erlaubt: 1 bis 8."},
 		{"tune0", func(e Einstellungen) string { return jaNein(e.Tune0) },
 			"tune 0 (SVT-AV1): stimmt den Encoder auf den Seheindruck ab statt auf die\n# Rechengenauigkeit PSNR (Werk). Gemessen 26.09.2026 an einem 1080p50-Film:\n# beim gleichen VMAF-Ziel etwa 3 % groesser. Ob es schaerfer aussieht, zeigt\n# nur das Auge. ja oder nein."},
+		{"filmKorn", func(e Einstellungen) string { return strconv.Itoa(e.FilmKorn) },
+			"Filmkorn (SVT-AV1 film-grain): Der Player legt beim Abspielen feines\n# kuenstliches Korn ueber das Bild. Das gibt koernigen Filmen ihren Look\n# zurueck und kann Kloetzchen und Streifen in dunklen, glatten Flaechen\n# ueberdecken. 0 = aus (ab Werk), 1 bis 50 = Staerke; fuer leicht koernige\n# Filme etwa 4 bis 8. Ob es gefaellt, zeigt nur das Auge.\n# ACHTUNG, SEHR LANGSAM: SVT-AV1 schaetzt dafuer das Rauschen jedes Bildes\n# ab. Gemessen 01.10.2026 auf dem netcup-Server an einem 1080p50-Film mit\n# preset 9: 280 statt 33 Sekunden je Minute Film - 8,5-mal so lange. SVT-AV1\n# raet selbst ab preset 7 davon ab.\n# Das Korn kommt nur in den fertigen Film, nie in die Messproben (sonst\n# wertet VMAF das Korn als Fehler und Auto-CQ waehlt viel zu teuer), und die\n# Quelle wird dafuer nicht entrauscht (film-grain-denoise=0): sonst passt\n# das Ergebnis nicht mehr zu den Messproben und wirkt wachsartig glatt. Die\n# Datei wird so nur rund 1 % groesser. Erlaubt: 0 bis 50."},
+		{"vmafPerzentil", func(e Einstellungen) string { return strconv.Itoa(e.VMAFPerzentil) },
+			"Woran Auto-CQ die Qualitaet misst. 5 (ab Werk) = am 5-%-Perzentil der\n# Bildwerte: 95 % der gemessenen Bilder sind mindestens so gut. Das faengt\n# einzelne schwache Szenen, die im Mittelwert untergehen wuerden - dann\n# gilt zielVMAFPerzentil. 0 = am Mittelwert wie bis 0.18.0 - dann gilt\n# zielVMAF. Erlaubt: 0 bis 50.\n# Ehrlich: In sehr dunklen Szenen ist VMAF selbst wenig empfindlich. Gegen\n# Kloetzchen in Schatten hilft dort eher varianceBoost."},
+		{"zielVMAFPerzentil", func(e Einstellungen) string { return zahl(e.ZielVMAFPerzentil) },
+			"Qualitaetsziel fuer das Perzentil (gilt mit vmafPerzentil groesser 0) -\n# wie zielVMAF eine UNTERGRENZE. Das 5-%-Perzentil liegt immer unter dem\n# Mittelwert. Gemessen 01.10.2026 an 6 Filmen (preset 9, 10 Bit): Mit 92\n# werden die Dateien im Schnitt so gross wie mit zielVMAF=96 am Mittelwert;\n# gleichmaessige Filme bis 19 % kleiner, Filme mit einzelnen schwachen\n# Szenen bis 33 % groesser - genau dort sollen die Bits hin.\n# Faustregel: Mittelwert-Ziel minus 4 (95 -> 91, 96 -> 92, 96,5 -> 92,5\n# bis 93). Ab Werk 92."},
 		{"zielVMAF", func(e Einstellungen) string { return zahl(e.ZielVMAF) },
-			"Qualitaetsziel. Auto-CQ haelt es als UNTERGRENZE: das Ergebnis liegt nicht\n# darunter, solange das Material es ueberhaupt hergibt. Anhaltspunkte,\n# gemessen 25.09.2026 an einer 1080p-Szene mit preset 9 und 10 Bit\n# (Original 12,3 Mbit/s):\n#   VMAF 93   = CRF 33, 2,2 Mbit/s - sichtbar weicher, Kloetzchen, Streifen\n#   VMAF 96   = CRF 28, 3,2 Mbit/s\n#   VMAF 97,5 = CRF 24, 4,2 Mbit/s\n#   VMAF 98   = CRF 20, 5,2 Mbit/s - kaum vom Original zu unterscheiden\n# 1080p-Filme mit 50 Bildern/s erreichen 98 meist gar nicht (26.09.2026:\n# nur 3 von 23 Filmen) - dort greift plateauToleranz.\n# Wer das Ziel aendert, legt die Anker so, dass der bessere darueber landet."},
+			"Qualitaetsziel fuer den Mittelwert - gilt nur mit vmafPerzentil=0.\n# Auto-CQ haelt es als UNTERGRENZE: das Ergebnis liegt nicht\n# darunter, solange das Material es ueberhaupt hergibt. Anhaltspunkte,\n# gemessen 25.09.2026 an einer 1080p-Szene mit preset 9 und 10 Bit\n# (Original 12,3 Mbit/s):\n#   VMAF 93   = CRF 33, 2,2 Mbit/s - sichtbar weicher, Kloetzchen, Streifen\n#   VMAF 96   = CRF 28, 3,2 Mbit/s\n#   VMAF 97,5 = CRF 24, 4,2 Mbit/s\n#   VMAF 98   = CRF 20, 5,2 Mbit/s - kaum vom Original zu unterscheiden\n# 1080p-Filme mit 50 Bildern/s erreichen 98 meist gar nicht (26.09.2026:\n# nur 3 von 23 Filmen) - dort greift plateauToleranz.\n# Wer das Ziel aendert, legt die Anker so, dass der bessere darueber landet."},
 		{"ankerNiedrig", func(e Einstellungen) string { return strconv.Itoa(e.AnkerNiedrig) },
-			"Die zwei CRF-Werte, die Auto-CQ zuerst misst, um die Kurve zu schaetzen.\n# Der niedrige sollte ueber dem Ziel landen, der hohe darunter: fuer\n# Ziel 94 bis 95 etwa 22 und 32 (ab Werk), fuer Ziel 96 bis 98 etwa 16\n# und 26. Der niedrige ist zugleich die beste Qualitaet, die Auto-CQ je\n# anbietet."},
+			"Die zwei CRF-Werte, die Auto-CQ zuerst misst, um die Kurve zu schaetzen.\n# Der niedrige sollte ueber dem Ziel landen, der hohe darunter: fuer\n# Ziel 94 bis 95 etwa 22 und 32 (ab Werk), fuer Ziel 96 bis 98 etwa 16\n# und 26. Am Perzentil mit zielVMAFPerzentil 92 (ab Werk) passen 22 und 32\n# ebenfalls (gemessen 01.10.2026). Der niedrige ist zugleich die beste\n# Qualitaet, die Auto-CQ je anbietet."},
 		{"ankerHoch", func(e Einstellungen) string { return strconv.Itoa(e.AnkerHoch) }, ""},
 		{"crfMin", func(e Einstellungen) string { return strconv.Itoa(e.CRFMin) },
 			"Klemme: Auto-CQ verlaesst diesen Bereich nie."},
@@ -378,6 +423,8 @@ func wertUebernehmen(e *Einstellungen, schluessel, wert string) error {
 		return ganzzahl(wert, 0, 13, &e.Preset)
 	case "kerne":
 		return ganzzahl(wert, 1, maxKerneHart, &e.Kerne)
+	case "parallelDateien":
+		return ganzzahl(wert, 1, maxParallelDateien, &e.ParallelDateien)
 	case "bittiefe":
 		return bittiefeLesen(e, wert)
 	case "maxAufloesung":
@@ -390,6 +437,12 @@ func wertUebernehmen(e *Einstellungen, schluessel, wert string) error {
 		return varianceReglerLesen(wert, 8, &e.VarianceOktil)
 	case "tune0":
 		e.Tune0 = istJa(wert)
+	case "filmKorn":
+		return ganzzahl(wert, 0, maxFilmKorn, &e.FilmKorn)
+	case "vmafPerzentil":
+		return ganzzahl(wert, 0, maxVMAFPerzentil, &e.VMAFPerzentil)
+	case "zielVMAFPerzentil":
+		return kommazahl(wert, 1, 100, &e.ZielVMAFPerzentil)
 	case "zielVMAF":
 		return kommazahl(wert, 1, 100, &e.ZielVMAF)
 	case "ankerNiedrig":
