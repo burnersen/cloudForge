@@ -24,20 +24,19 @@ func TestWerkswerteSindDieDesNutzers(t *testing.T) {
 			e.Preset, e.Bittiefe, e.ZielVMAF, e.AnkerNiedrig, e.AnkerHoch)
 	}
 	// Seit 0.19.0 Variance Boost an (gegen Klötzchen in ruhigen Flächen),
-	// tune 0 weiter aus (kostet ~3 %, Nutzen nicht belegt).
-	if !e.VarianceBoost || e.Tune0 {
-		t.Errorf("Variance Boost (%v) muss ab Werk an, tune 0 (%v) aus sein", e.VarianceBoost, e.Tune0)
+	// seit 0.20.0 auch tune 0 (Nutzerwahl 03.10.2026 nach seinen Läufen).
+	if !e.VarianceBoost || !e.Tune0 {
+		t.Errorf("Variance Boost (%v) und tune 0 (%v) muessen ab Werk an sein", e.VarianceBoost, e.Tune0)
 	}
 	// Seit 0.18.0: Empfehlung der SVT-AV1-Doku für echte Filme (= Werk von SVT).
 	if e.VarianceBoostStaerke != 2 || e.VarianceOktil != 5 {
 		t.Errorf("Variance Boost Staerke %d / Oktil %d, erwartet 2 / 5", e.VarianceBoostStaerke, e.VarianceOktil)
 	}
 	// Den Kosten-Deckel (0.8.0 bis 0.11.1: 50 %) hat der Nutzer am 27.09.2026
-	// abgeschaltet — Qualität geht vor. Mindestersparnis seit 0.19.0 10 %
-	// (seine INI; 0.11.3 bis 0.18.0 15, davor 30), Messfenster 5 statt 3
-	// (Vorhersage traf den Film besser).
-	if e.KostenDeckelProzent != 0 || e.MindestErsparnisProzent != 10 {
-		t.Errorf("Deckel %v / Mindestersparnis %v, erwartet 0 / 10", e.KostenDeckelProzent, e.MindestErsparnisProzent)
+	// abgeschaltet — Qualität geht vor. Mindestersparnis seit 0.20.0 7 %
+	// (seine INI; 0.19.x 10, 0.11.3 bis 0.18.0 15, davor 30).
+	if e.KostenDeckelProzent != 0 || e.MindestErsparnisProzent != 7 {
+		t.Errorf("Deckel %v / Mindestersparnis %v, erwartet 0 / 7", e.KostenDeckelProzent, e.MindestErsparnisProzent)
 	}
 	// Seit 0.19.0 (Nutzerwahl 01.10.2026): gemessen am 5-%-Perzentil, ohne
 	// Filmkorn (kostet viel Zeit), eine Datei nach der anderen.
@@ -50,8 +49,10 @@ func TestWerkswerteSindDieDesNutzers(t *testing.T) {
 	if e.ZielVMAFPerzentil != 92 {
 		t.Errorf("Ziel fuer das Perzentil %v, erwartet 92", e.ZielVMAFPerzentil)
 	}
-	if e.MessfensterAnzahl != 5 || e.MessfensterSek != 8 {
-		t.Errorf("Messfenster %d x %v s, erwartet 5 x 8 s", e.MessfensterAnzahl, e.MessfensterSek)
+	// Seit 0.20.0 4 x 9 s (seine INI; 0.11.3 bis 0.19.1 5 x 8 s). Nie
+	// zurück auf 3: Mit 3 Stellen lag die Vorhersage bis 10 Punkte daneben.
+	if e.MessfensterAnzahl != 4 || e.MessfensterSek != 9 {
+		t.Errorf("Messfenster %d x %v s, erwartet 4 x 9 s", e.MessfensterAnzahl, e.MessfensterSek)
 	}
 	// Seit 0.9.0: Plateau-Toleranz 0,5 wie in NVENCForge.
 	if e.PlateauToleranz != 0.5 {
@@ -299,7 +300,7 @@ func TestAlteINIBekommtNeueSchluesselErgaenzt(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, zeile := range []string{"\nbittiefe=10\n", "\nvollpruefung=nein\n", "\nvarianceBoost=ja\n",
-		"\nvarianceBoostStaerke=2\n", "\nvarianceOktil=5\n", "\ntune0=nein\n",
+		"\nvarianceBoostStaerke=2\n", "\nvarianceOktil=5\n", "\ntune0=ja\n",
 		"\nfilmKorn=0\n", "\nvmafPerzentil=5\n", "\nparallelDateien=1\n"} {
 		if !strings.Contains(string(nachErstemStart), zeile) {
 			t.Errorf("%q wurde nicht in die INI geschrieben:\n%s", strings.TrimSpace(zeile), nachErstemStart)

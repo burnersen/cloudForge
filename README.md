@@ -147,18 +147,18 @@ Die Einstellungen stehen in `~/cloudforge/cloudforge.ini`; jeder Eintrag ist dor
 | `zielVMAFPerzentil` | `92` | Qualitätsziel für das Perzentil, gilt als Untergrenze. 92 ergibt im Schnitt so große Dateien wie Mittelwert 96 (gemessen an 6 Filmen). |
 | `zielVMAF` | `95` | Qualitätsziel für den Mittelwert – gilt immer, beim Perzentil als Sicherheitsnetz zusätzlich. So wird keine Datei schlechter als mit diesem Wert allein. 93 = sichtbar weicher, 98 = kaum vom Original zu unterscheiden. |
 | `originalBehandlung` | `verschieben` | `verschieben` (nach `originals/`), `loeschen` oder `behalten` |
-| `mindestErsparnisProzent` | `10` | Wird eine Datei nicht mindestens so viel kleiner, wird sie nur verlustfrei umgepackt. |
+| `mindestErsparnisProzent` | `7` | Wird eine Datei nicht mindestens so viel kleiner, wird sie nur verlustfrei umgepackt. |
 | `kostenDeckelProzent` | `0` (aus) | Deckel wie bei NVENCForge: das neue Bild darf höchstens so viel Prozent des alten kosten – notfalls unter dem Qualitätsziel. |
-| `messfensterAnzahl` | `5` | An so vielen Stellen wird die Qualität gemessen. |
+| `messfensterAnzahl`, `messfensterSek` | `4`, `9` | An so vielen Stellen wird die Qualität gemessen, je so viele Sekunden lang (nie unter 8). |
 | `preset` | `9` | SVT-AV1-Preset: höher = schneller, aber größer bei gleicher Qualität. |
 | `bittiefe` | `10` | 10 Bit beugt Streifen in Farbverläufen vor, 8 ist etwas schneller. |
 | `maxAufloesung` | `0` | Höchste Auflösung des Ergebnisses (kurze Kante: 720, 1080, 1440, 2160; 0 = aus), wie in NVENCForge – größeres Material wird ohne Nachschärfen verkleinert. |
 | `kerne` | `6` | Wie stark SVT-AV1 parallel rechnet; 6 ist das Maximum. |
 | `varianceBoost` | `ja` | SVT-AV1 gibt ruhigen, glatten und dunklen Flächen mehr Daten – dort entstehen sonst zuerst Klötzchen. Die Datei wird beim Qualitätsziel kaum größer. |
-| `tune0` | `nein` | SVT-AV1 auf den Seheindruck abgestimmt statt auf PSNR; etwa 3 % größer, ob es besser aussieht, zeigt nur das Auge. |
+| `tune0` | `ja` | SVT-AV1 auf den Seheindruck abgestimmt statt auf PSNR; etwa 3 % größer, ob es besser aussieht, zeigt nur das Auge. |
 | `varianceBoostStaerke`, `varianceOktil` | `2`, `5` | Feinregler des Variance Boost (Stärke 1–4, Oktil 1–8), wirken nur mit `varianceBoost=ja`. Ab Werk die Empfehlung von SVT-AV1 für echte Filme. |
 | `filmKorn` | `0` (aus) | Filmkorn von SVT-AV1 (1–50), nur im fertigen Film, nie in den Messproben; die Quelle wird dafür nicht entrauscht. Kostet viel Rechenzeit. |
-| `parallelDateien` | `1` | So viele Dateien gleichzeitig; die Kerne werden aufgeteilt. Lohnt sich vor allem auf großen Prozessoren. |
+| `parallelDateien` | `1` | So viele Dateien gleichzeitig; jede rechnet mit voller Kernzahl (aufgeteilt war es langsamer). Lohnt sich vor allem auf großen Prozessoren. |
 | `vollpruefung` | `nein` | Jedes Ergebnis vor dem Ablegen komplett durchlesen (sicherer, aber langsam). |
 | `quellOrdner` | leer | Der Ordner für die Automatik. |
 

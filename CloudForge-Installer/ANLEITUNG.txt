@@ -31,7 +31,7 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.19.1                                   Datei 2 von 3
+       CloudForge 0.20.0                                   Datei 2 von 3
        -----------------------------------------------------------------
        OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 92,4 (Mittel 96,3)  in 42 Min
 
@@ -387,7 +387,7 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         verlustfrei umgepackt (siehe mindestErsparnisProzent).
         Wer ihn trotzdem will: 50 = höchstens die Hälfte des Originals.
 
-    mindestErsparnisProzent=10
+    mindestErsparnisProzent=7
         Wird eine Datei nicht mindestens so viel kleiner, wird sie nicht
         umgewandelt, sondern nur verlustfrei nach MKV umgepackt (Bild bleibt
         gleich) und in "output" gelegt - wie bei NVENCForge. CloudForge rechnet
@@ -398,14 +398,19 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         probehalber um (etwa 1 Minute; seit 0.13.0, 20 statt 10 Stücke seit
         0.16.0 - 10 lagen bei einem Film 6 Punkte daneben) und entscheidet
         erst dann.
-        Ab Werk 10 (seit 0.19.0; davor 15, ganz früher 30): Auch Grenzfälle
-        werden noch kleiner gemacht, darunter lohnt die Rechenzeit kaum.
+        Ab Werk 7 (seit 0.20.0; davor 10, 15, ganz früher 30): Auch
+        Grenzfälle werden noch kleiner gemacht, darunter lohnt die Rechenzeit
+        kaum. Die Bildqualität sichert ohnehin das VMAF-Ziel.
 
-    messfensterAnzahl=5
+    messfensterAnzahl=4
+    messfensterSek=9
         An so vielen Stellen misst CloudForge die Qualität, bevor es einen
-        Film umwandelt. Mit 3 Stellen lag die Größen-Vorhersage manchmal bis
-        10 Prozentpunkte neben dem ganzen Film, 5 treffen ihn besser. Mehr
-        Stellen messen genauer, dauern aber länger.
+        Film umwandelt, je so viele Sekunden lang. Ab Werk 4 Stellen zu je
+        9 Sekunden (seit 0.20.0, vorher 5 zu je 8). Mit 3 Stellen lag die
+        Größen-Vorhersage manchmal bis 10 Prozentpunkte neben dem ganzen
+        Film. Mehr Stellen messen genauer, dauern aber länger. Kürzer als
+        8 Sekunden nie: kürzere Stücke verschieben die Wahl um mehrere
+        Stufen.
 
     kerne=6
         Wie stark SVT-AV1 parallel rechnet - keine feste Kernzahl. 6 ist
@@ -479,12 +484,13 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         Werkswerte von SVT-AV1 - wer sie so lässt, bekommt genau das, was
         varianceBoost=ja schon bis 0.17.0 gemacht hat.
 
-    tune0=nein
+    tune0=ja
         ja = SVT-AV1 stimmt sich auf den Seheindruck ab statt auf eine
              Rechengenauigkeit. Die Datei wird etwa 3 % größer (gemessen).
              Ob es schärfer wirkt, zeigt nur ein Vergleich mit den Augen.
+             Ab Werk ja (seit 0.20.0, vorher nein).
 
-        Zum Ausprobieren: Schalter auf ja stellen, speichern, ein paar Filme
+        Zum Ausprobieren: Schalter umstellen, speichern, ein paar Filme
         umwandeln und mit früheren vergleichen. Welche Datei mit welcher
         Einstellung entstanden ist, steht im Protokoll
         ("Einstellungen: ... Variance Boost an ..."). Seit 0.19.0 steht dort

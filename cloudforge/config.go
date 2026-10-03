@@ -108,10 +108,14 @@ type Einstellungen struct {
 //     über, einer unter dem Ziel landen. Mit 16/26 lagen bei Ziel 95 meist
 //     beide darüber — der hohe lag bei vielen Filmen um 96. Der niedrige ist
 //     zugleich die beste Qualität, die Auto-CQ je anbietet.
-//   - 5 Messfenster (seit 0.11.3): Mit 3 lag der hochgerechnete Anteil am
+//   - 4 Messfenster zu je 9 s (seit 0.20.0, Nutzerwahl 03.10.2026 nach
+//     seinen Läufen mit 0.19.x; 0.11.3 bis 0.19.1: 5 x 8 s). Weniger als 4
+//     sollen es nicht werden: Mit 3 lag der hochgerechnete Anteil am
 //     27.09.2026 bis 10 Prozentpunkte neben dem ganzen Film (bei einem: 42
 //     statt 31 %), obwohl die Proben an den Messstellen genau stimmten — die
-//     drei Stellen trafen den Schnitt des Films nicht. Messen: 2,5 statt 2,2 Min.
+//     drei Stellen trafen den Schnitt des Films nicht. 4 x 9 s gegen 5 x 8 s
+//     ist nicht eigens gemessen (36 statt 40 s Material); Grenzfälle an der
+//     Mindestersparnis prüft ohnehin die Grössenprobe an 20 Stellen.
 //   - 10 Bit gegen Streifen in Farbverläufen, kostet dort nur ~20 % Tempo.
 //   - preset 9: 1080p50 mit 1,27x Echtzeit, preset 8 wäre knapp darunter.
 //   - Variance Boost an (seit 0.19.0, vorher aus): Er gibt kontrastarmen,
@@ -119,8 +123,10 @@ type Einstellungen struct {
 //     des Nutzers ist ein Bild ohne Klötzchen in ruhigen Flächen und Schatten.
 //     Beim Qualitätsziel wurde die Datei damit kaum grösser (gemessen
 //     26.09.2026), der Nutzer fährt ihn seit 26.09. selbst.
-//   - tune 0 bleibt aus: Es kostet beim selben Ziel etwa 3 % Grösse, und ob
-//     es besser aussieht, ist nicht belegt — der Nutzer testet es selbst.
+//   - tune 0 an (seit 0.20.0, vorher aus): Es kostet beim selben Ziel etwa
+//     3 % Grösse (gemessen 26.09.2026). VMAF sieht den Nutzen nicht; der
+//     Nutzer fährt es seit 26.09. und hat am 03.10.2026 nach seinen Läufen
+//     entschieden, dass ihm das Bild so gefällt.
 //   - Variance Boost Stärke 2, Oktil 5 (seit 0.18.0): die Empfehlung der
 //     SVT-AV1-Doku für echte Filme und zugleich die Werkswerte von SVT-AV1 —
 //     wer nur varianceBoost=ja setzt, bekommt dasselbe wie bis 0.17.0.
@@ -162,7 +168,7 @@ func standardWerte() Einstellungen {
 		VarianceBoost:        true,
 		VarianceBoostStaerke: 2,
 		VarianceOktil:        5,
-		Tune0:                false,
+		Tune0:                true,
 		FilmKorn:             0,
 		ZielVMAF:             95,
 		VMAFPerzentil:        5,
@@ -172,20 +178,20 @@ func standardWerte() Einstellungen {
 		CRFMin:               14,
 		CRFMax:               44,
 
-		MessfensterAnzahl: 5,
-		MessfensterSek:    8,
+		MessfensterAnzahl: 4,
+		MessfensterSek:    9,
 		PlateauToleranz:   0.5, // wie in NVENCForge: Bild vor den letzten Prozent Platz
 		PlateauMindestSpa: 5,
 
 		// Den Deckel (bis 0.11.1: 50) hat der Nutzer am 27.09.2026
 		// abgeschaltet: gedeckelte Clips mit VMAF 93 sahen für ihn deutlich
 		// schlechter aus als das Original — die Qualität geht vor. Begrenzt
-		// wird nur noch über die Mindestersparnis: seit 0.19.0 10 % (die Wahl
-		// des Nutzers in seiner INI; 0.11.3 bis 0.18.0 15 %, davor 30) —
-		// darunter lohnt die Rechenzeit kaum, und das Original bleibt
-		// verlustfrei erhalten.
+		// wird nur noch über die Mindestersparnis: seit 0.20.0 7 % (die Wahl
+		// des Nutzers in seiner INI; 0.19.x 10 %, 0.11.3 bis 0.18.0 15 %,
+		// davor 30). Die Qualität sichert das VMAF-Ziel; darunter lohnt die
+		// Rechenzeit kaum, und das Original bleibt verlustfrei erhalten.
 		KostenDeckelProzent:     0,
-		MindestErsparnisProzent: 10,
+		MindestErsparnisProzent: 7,
 
 		PlatzReserveGB:     20,
 		Vollpruefung:       false,
@@ -238,7 +244,7 @@ func iniAufbau() []iniZeile {
 		{"varianceOktil", func(e Einstellungen) string { return strconv.Itoa(e.VarianceOktil) },
 			"Wie waehlerisch der Variance Boost ist (SVT-AV1: variance-octile). Wirkt\n# nur mit varianceBoost=ja. SVT betrachtet jeden Bildblock in Achteln:\n# 1 = ein ruhiges Achtel genuegt, damit der Block mehr Bits bekommt,\n# 8 = der ganze Block muss ruhig sein. Kleiner = mehr Bloecke bekommen mehr,\n# auch unruhige - die Datei waechst. Groesser = sparsamer, aber einzelne\n# ruhige Stellen koennen schlechter aussehen als ihre Umgebung. Die SVT-Doku\n# empfiehlt 4 bis 7; 5 ist EMPFOHLEN und ab Werk (zugleich der Werkswert\n# von SVT-AV1). Erlaubt: 1 bis 8."},
 		{"tune0", func(e Einstellungen) string { return jaNein(e.Tune0) },
-			"tune 0 (SVT-AV1): stimmt den Encoder auf den Seheindruck ab statt auf die\n# Rechengenauigkeit PSNR (Werk). Gemessen 26.09.2026 an einem 1080p50-Film:\n# beim gleichen VMAF-Ziel etwa 3 % groesser. Ob es schaerfer aussieht, zeigt\n# nur das Auge. ja oder nein."},
+			"tune 0 (SVT-AV1): stimmt den Encoder auf den Seheindruck ab statt auf die\n# Rechengenauigkeit PSNR (Standard von SVT-AV1). Gemessen 26.09.2026 an einem\n# 1080p50-Film: beim gleichen VMAF-Ziel etwa 3 % groesser. VMAF sieht den\n# Unterschied nicht, nur das Auge. ja oder nein, ab Werk ja (seit 0.20.0,\n# vorher nein)."},
 		{"filmKorn", func(e Einstellungen) string { return strconv.Itoa(e.FilmKorn) },
 			"Filmkorn (SVT-AV1 film-grain): Der Player legt beim Abspielen feines\n# kuenstliches Korn ueber das Bild. Das gibt koernigen Filmen ihren Look\n# zurueck und kann Kloetzchen und Streifen in dunklen, glatten Flaechen\n# ueberdecken. 0 = aus (ab Werk), 1 bis 50 = Staerke; fuer leicht koernige\n# Filme etwa 4 bis 8. Ob es gefaellt, zeigt nur das Auge.\n# ACHTUNG, SEHR LANGSAM: SVT-AV1 schaetzt dafuer das Rauschen jedes Bildes\n# ab. Gemessen 01.10.2026 auf dem netcup-Server an einem 1080p50-Film mit\n# preset 9: 280 statt 33 Sekunden je Minute Film - 8,5-mal so lange. SVT-AV1\n# raet selbst ab preset 7 davon ab.\n# Das Korn kommt nur in den fertigen Film, nie in die Messproben (sonst\n# wertet VMAF das Korn als Fehler und Auto-CQ waehlt viel zu teuer), und die\n# Quelle wird dafuer nicht entrauscht (film-grain-denoise=0): sonst passt\n# das Ergebnis nicht mehr zu den Messproben und wirkt wachsartig glatt. Die\n# Datei wird so nur rund 1 % groesser. Erlaubt: 0 bis 50."},
 		{"vmafPerzentil", func(e Einstellungen) string { return strconv.Itoa(e.VMAFPerzentil) },
@@ -257,16 +263,16 @@ func iniAufbau() []iniZeile {
 			"Kosten-Deckel wie bei NVENCForge: Das Bild darf hoechstens so viel Prozent\n# der Quelle kosten (gemessen an den Messstellen). Greift nur bei schon\n# stark komprimierten Quellen - dort sinkt die Qualitaet dann UNTER das Ziel.\n# Ab Werk 0 = kein Deckel (seit 0.11.2): Gedeckelte Vergleichsclips mit\n# VMAF 93 sahen am 27.09.2026 deutlich schlechter aus als das Original.\n# Ohne Deckel bleibt die Qualitaet beim Ziel; was dabei keine\n# mindestErsparnisProzent spart, wird nur verlustfrei umgepackt.\n# Wer ihn trotzdem will: 50 = hoechstens die Haelfte der Quelle. Ist der\n# Deckel gar nicht einzuhalten, bleibt die Qualitaetswahl stehen."},
 
 		{"messfensterAnzahl", func(e Einstellungen) string { return strconv.Itoa(e.MessfensterAnzahl) },
-			"Wie viele Stichproben Auto-CQ misst, gleichmaessig verteilt. 5 ab Werk:\n# Mit 3 lag die Groessen-Vorhersage am 27.09.2026 bis 10 Prozentpunkte\n# neben dem ganzen Film. Mehr Stichproben messen genauer, aber laenger:\n# 5 statt 3 kostet etwa zwei Drittel mehr Messzeit."},
+			"Wie viele Stichproben Auto-CQ misst, gleichmaessig verteilt. 4 ab Werk\n# (seit 0.20.0, vorher 5). Mit 3 lag die Groessen-Vorhersage am 27.09.2026\n# bis 10 Prozentpunkte neben dem ganzen Film. Mehr Stichproben messen\n# genauer, aber laenger: 5 statt 3 kostete etwa zwei Drittel mehr Messzeit."},
 		{"messfensterSek", func(e Einstellungen) string { return zahl(e.MessfensterSek) },
-			"Laenge je Stichprobe. NIEMALS unter 8 - kuerzere Fenster verschieben\n# die CRF-Wahl um mehrere Stufen (gemessen im NVENCForge-Projekt)."},
+			"Laenge je Stichprobe in Sekunden, ab Werk 9 (seit 0.20.0, vorher 8).\n# NIEMALS unter 8 - kuerzere Fenster verschieben die CRF-Wahl um mehrere\n# Stufen (gemessen im NVENCForge-Projekt)."},
 		{"plateauToleranz", func(e Einstellungen) string { return zahl(e.PlateauToleranz) },
 			"Ist das Ziel nicht erreichbar, darf Auto-CQ hoechstens so viel VMAF unter\n# dem besten Wert (bei ankerNiedrig) bleiben, um Platz zu sparen. 0,5 wie in\n# NVENCForge (Entscheidung des Nutzers: das Bild ist wichtiger als die\n# letzten Prozent Platz)."},
 		{"plateauMindestSparen", func(e Einstellungen) string { return zahl(e.PlateauMindestSpa) },
 			"Der Aufstieg wird nur genommen, wenn er je CRF-Stufe im Mittel mindestens\n# so viel Prozent spart."},
 
 		{"mindestErsparnisProzent", func(e Einstellungen) string { return zahl(e.MindestErsparnisProzent) },
-			"Wird die Datei nicht um mindestens so viel Prozent kleiner, wird sie nicht\n# umgewandelt, sondern nur verlustfrei nach MKV umgepackt (Bild unveraendert,\n# wie NVENCForge) und als name.h264.mkv o. ae. in output gelegt; das Original\n# wandert wie sonst nach originals. Zweimal geprueft: gleich nach der\n# Qualitaetsmessung aus den Messproben hochgerechnet (spart die ganze\n# Rechenzeit) und nach dem Umwandeln an der echten Datei."},
+			"Wird die Datei nicht um mindestens so viel Prozent kleiner, wird sie nicht\n# umgewandelt, sondern nur verlustfrei nach MKV umgepackt (Bild unveraendert,\n# wie NVENCForge) und als name.h264.mkv o. ae. in output gelegt; das Original\n# wandert wie sonst nach originals. Zweimal geprueft: gleich nach der\n# Qualitaetsmessung aus den Messproben hochgerechnet (spart die ganze\n# Rechenzeit) und nach dem Umwandeln an der echten Datei.\n# Ab Werk 7 (seit 0.20.0, vorher 10)."},
 
 		{"platzReserveGB", func(e Einstellungen) string { return strconv.Itoa(e.PlatzReserveGB) },
 			"So viel Platz bleibt immer frei. Sonst wartet das Programm."},
