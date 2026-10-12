@@ -15,6 +15,7 @@ package main
 //   cloudforge -zeitplan an|aus    alle 30 Minuten die Automatik im Hintergrund
 //   cloudforge -protokoll          zeigt das Protokoll laufend an
 //   cloudforge -container mkv|mp4|umschalten  Behaelter der Ergebnisse
+//   cloudforge -mkv2mp4            alle MKV im aktuellen Ordner nach MP4 (Befehl mkv2mp4)
 //   cloudforge -hilfe              erklaert die Aufrufe
 
 import (
@@ -32,7 +33,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.21.0"
+const appVersion = "0.22.0"
 
 func main() {
 	err := starten()
@@ -57,6 +58,7 @@ func starten() error {
 	zeitplan := flag.String("zeitplan", "", "an oder aus: alle 30 Minuten die Automatik-Ordner abarbeiten")
 	protokollZeigen := flag.Bool("protokoll", false, "das Protokoll laufend ansehen")
 	container := flag.String("container", "", "mkv, mp4 oder umschalten: Behaelter der Ergebnisse festlegen")
+	mkv2mp4 := flag.Bool("mkv2mp4", false, "alle MKV im aktuellen Ordner verlustfrei nach MP4 umpacken")
 	hilfe := flag.Bool("hilfe", false, "Erklaerung der Aufrufe")
 	iniPfad := flag.String("ini", standardINIPfad(), "Pfad zur Einstellungsdatei")
 	flag.Parse()
@@ -96,6 +98,11 @@ func starten() error {
 
 	if err := WerkzeugePruefen(e); err != nil {
 		return err
+	}
+
+	// mkv2mp4 läuft ohne Sperre, auch neben einem CloudForge-Lauf (mkv2mp4.go).
+	if *mkv2mp4 {
+		return mkv2mp4Starten(flag.Args(), e)
 	}
 
 	switch *zeitplan {
@@ -831,6 +838,13 @@ AUFRUFE IM TERMINAL
                                  auf dem iPhone ohne Zusatz-App), "mkv" wieder
                                  als MKV, "umschalten" wechselt (Symbol
                                  "MKV/MP4 umschalten"). Das Bild bleibt AV1.
+
+  mkv2mp4                        packt alle MKV im aktuellen Ordner verlustfrei
+                                 nach MP4 um, legt sie in den Unterordner
+                                 "output" und loescht danach die Originale
+                                 (fragt vorher nach). Laeuft auch neben einem
+                                 CloudForge-Lauf. Was MP4 nicht aufnehmen
+                                 kann, bleibt als MKV liegen.
 
   cloudforge -ini PFAD           andere Einstellungsdatei benutzen.
   cloudforge -hilfe              diese Uebersicht.

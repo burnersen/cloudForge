@@ -223,6 +223,16 @@ mkdir -p "$HOME/.local/bin" \
     && ln -sf "$ZIEL/cloudforge" "$HOME/.local/bin/cloudforge" \
     && ok "im Terminal aufrufbar als: cloudforge (ab dem naechsten Anmelden)"
 
+# Seit 0.22.0: der Befehl mkv2mp4 (alle MKV im aktuellen Ordner nach MP4).
+# Ein kleines Skript statt eines Links, weil es cloudforge mit -mkv2mp4 ruft.
+cat > "$HOME/.local/bin/mkv2mp4" <<SKRIPT \
+    && chmod +x "$HOME/.local/bin/mkv2mp4" \
+    && ok "im Terminal aufrufbar als: mkv2mp4"
+#!/bin/bash
+# Von CloudForge angelegt: packt alle MKV im aktuellen Ordner nach MP4 um.
+exec "$ZIEL/cloudforge" -mkv2mp4 "\$@"
+SKRIPT
+
 # ---------------------------------------------------------------------------
 
 schritt "Abschlusspruefung"

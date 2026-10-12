@@ -48,7 +48,7 @@ Bedient wird es ohne Terminal: Dateien oder ganze Ordner mit der Maus auf ein Sc
 
 - **Auto-CQ mit VMAF** – an mehreren Stellen jedes Films wird probeweise umgewandelt und mit dem Original verglichen. Gewählt wird die kleinste Datei, die das Qualitätsziel noch hält. Videos unter 1080p werden dafür auf 1080p vergrößert gemessen – so, wie sie im Vollbild aussehen.
 - **Lohnt sich nicht? Dann nur umpacken** – ist eine Datei schon AV1, kleiner als 720p, schon sehr schlank oder würde sie kaum kleiner, wird sie verlustfrei umgepackt. Das Bild bleibt bitgleich.
-- **MKV oder MP4** – ab Werk MKV; auf Knopfdruck MP4, das iPhone und andere Apple-Geräte ohne Zusatz-App abspielen. Das Bild bleibt AV1, der Ton 1:1.
+- **MKV oder MP4** – ab Werk MKV; auf Knopfdruck MP4, das iPhone und andere Apple-Geräte ohne Zusatz-App abspielen. Das Bild bleibt AV1, der Ton 1:1. Schon fertige MKV macht der Befehl `mkv2mp4` nachträglich verlustfrei zu MP4.
 - **Prüfkette** – Größe, Spieldauer, Ton- und Untertitelspuren werden mit dem Original verglichen; auf Wunsch wird jedes Ergebnis komplett durchgelesen.
 - **Abbrechen ist ungefährlich** – Fenster zu oder Strg+C: Halbfertiges verschwindet, das Original bleibt unberührt, Fertiges bleibt fertig.
 - **Nächste Datei vorab holen** – während ein Film umgewandelt wird, kommt der nächste schon aus der Cloud (spart etwa 3 Minuten je Film).
@@ -109,7 +109,7 @@ Das Paket enthält das Einrichtungs-Skript, die Anleitung und das Programm für 
 - kopiert CloudForge nach `~/cloudforge/` (eine vorhandene Fassung bleibt als `cloudforge.vorher` erhalten),
 - lädt ffmpeg und ffprobe nach `~/cloudforge/tools/` (rund 140 MB, bevorzugt Fassung 8.1, mit der die Qualitätswerte gemessen wurden),
 - legt die Einstellungsdatei `~/cloudforge/cloudforge.ini` und vier Schreibtisch-Symbole an (gleich als vertrauenswürdig markiert),
-- legt die Anleitung auf den Schreibtisch und macht `cloudforge` im Terminal aufrufbar.
+- legt die Anleitung auf den Schreibtisch und macht `cloudforge` und `mkv2mp4` im Terminal aufrufbar.
 
 Mehrmals ausführen schadet nicht, die Einstellungen bleiben erhalten. **Aktualisieren** geht genauso. Was sich in welcher Fassung geändert hat, steht bei den [Releases](https://github.com/burnersen/cloudForge/releases).
 
@@ -133,6 +133,7 @@ Alles geht auch im Terminal:
 | `cloudforge -zeitplan an` | alle 30 Minuten von selbst abarbeiten (`aus` schaltet es ab) |
 | `cloudforge -protokoll` | das Protokoll laufend ansehen |
 | `cloudforge -container mp4` | Ergebnisse ab jetzt als MP4 speichern (`mkv` zurück, `umschalten` wechselt) |
+| `mkv2mp4` | alle MKV im aktuellen Ordner verlustfrei nach MP4 umpacken, nach `output/` legen und die Originale löschen – erst nach Rückfrage und nur, wenn die MP4 geprüft am Ziel liegt. Was MP4 nicht aufnehmen kann, bleibt liegen. Läuft auch neben einem CloudForge-Lauf. |
 | `cloudforge -starter` | die Schreibtisch-Symbole neu anlegen |
 | `cloudforge -hilfe` | alle Möglichkeiten |
 

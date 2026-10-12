@@ -31,7 +31,7 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.21.0                                   Datei 2 von 3
+       CloudForge 0.22.0                                   Datei 2 von 3
        -----------------------------------------------------------------
        OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 92,4 (Mittel 96,3)  in 42 Min
 
@@ -111,6 +111,25 @@ MKV ODER MP4 (seit 0.21.0)
   Farbe fällt weg.
   Schon fertige Ergebnisse bleiben, wie sie sind - umgeschaltet wird nur
   für die Dateien, die danach drankommen.
+
+FERTIGE MKV NACHTRÄGLICH ZU MP4 MACHEN: mkv2mp4 (seit 0.22.0)
+  Im Terminal in den Ordner wechseln, in dem die MKV liegen, und eintippen:
+
+      cd ~/pCloudDrive/Daten/output
+      mkv2mp4
+
+  mkv2mp4 zeigt zuerst, welche MKV es gefunden hat, und fragt nach. Erst
+  mit  j  und der Eingabetaste geht es los. Dann wird jede MKV verlustfrei
+  nach MP4 umgepackt (Bild und Ton bleiben genau gleich, nichts wird neu
+  berechnet - meist nur Sekunden bis wenige Minuten je Film) und in den
+  Unterordner "output" gelegt:  Film.av1.mkv  wird  output/Film.av1.mp4.
+  Startest du es im Ordner "output", entsteht also output/output.
+  Das ORIGINAL WIRD DANACH GELÖSCHT (in der pCloud: in den Papierkorb) -
+  aber erst, wenn die MP4 geprüft und vollständig am Ziel liegt.
+  Was MP4 nicht aufnehmen kann (siehe oben, etwa DTS- oder Opus-Ton),
+  bleibt als MKV liegen; mkv2mp4 sagt, warum. Unterordner fasst es nicht an.
+  mkv2mp4 läuft auch, während CloudForge gerade umwandelt.
+  Abbrechen: Strg+C - die angefangene Datei bleibt unangetastet.
 
 Den Namen des Ergebnisses räumt CloudForge dabei auf, genau wie NVENCForge
 (seit 0.14.0): Leer- und Sonderzeichen werden zu Punkten, doppelte Punkte
@@ -581,6 +600,8 @@ Alles, was die Symbole können, geht auch im Terminal:
     cloudforge -container mp4           Ergebnisse ab jetzt als MP4
     cloudforge -container mkv           ... wieder als MKV
     cloudforge -container umschalten    wechseln (wie das Symbol)
+    mkv2mp4                             alle MKV im aktuellen Ordner nach
+                                        MP4 umpacken, Originale löschen
     cloudforge -hilfe                   alle Möglichkeiten
 
 Falls "cloudforge" allein nicht gefunden wird (direkt nach der Einrichtung,
