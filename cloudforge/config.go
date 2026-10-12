@@ -57,6 +57,10 @@ type Einstellungen struct {
 	// Was mit dem Original geschieht
 	OriginalBehandlung string
 
+	// Behälter des Ergebnisses: ContainerMKV oder ContainerMP4 (seit 0.21.0,
+	// container.go)
+	Container string
+
 	// Encoder
 	Preset          int
 	Kerne           int
@@ -160,6 +164,10 @@ func standardWerte() Einstellungen {
 
 		OriginalBehandlung: OriginalVerschieben,
 
+		// MKV wie bis 0.20.0: Wer aktualisiert, bekommt nicht ungefragt
+		// andere Dateien. MP4 schaltet der Nutzer selbst ein.
+		Container: ContainerMKV,
+
 		Preset:               9,
 		Kerne:                6,
 		ParallelDateien:      1,
@@ -226,6 +234,8 @@ func iniAufbau() []iniZeile {
 
 		{"originalBehandlung", func(e Einstellungen) string { return e.OriginalBehandlung },
 			"verschieben = in den originals-Ordner (sicher, spart aber keinen Cloud-Platz)\n# loeschen    = in den Papierkorb der Cloud (spart sofort Platz)\n# behalten    = Original bleibt unberuehrt liegen"},
+		{"container", func(e Einstellungen) string { return e.Container },
+			"Behaelter (Container) des Ergebnisses: mkv oder mp4. Das Bild ist in beiden\n# dasselbe AV1, Ton und Untertitel bleiben unveraendert. mp4 spielt auf dem\n# iPhone und anderen Apple-Geraeten ohne Zusatz-App.\n# MP4 nimmt aber weniger auf als MKV. Eine Datei wird deshalb trotzdem MKV,\n# wenn sie Ton ausser AAC, MP3, AC-3, E-AC-3 oder ALAC hat (etwa DTS,\n# TrueHD, Opus), Bild-Untertitel (Blu-ray, DVD) oder Anhaenge (Schriften);\n# der Grund steht im Protokoll. Text-Untertitel kommen ins MP4-Textformat:\n# Text und Zeiten bleiben, Gestaltung wie Schrift und Farbe faellt weg.\n# Was nur umgepackt wird, wird MP4, wenn sein Bild H.264, H.265 oder AV1 ist.\n# Umschalten auch mit dem Symbol \"CloudForge: MKV/MP4 umschalten\" oder\n# cloudforge -container mkv|mp4|umschalten. Ab Werk mkv."},
 
 		{"preset", func(e Einstellungen) string { return strconv.Itoa(e.Preset) },
 			"SVT-AV1-Preset: hoeher = schneller, aber groesser bei gleicher Qualitaet.\n# 11 ist das schnellste - 12 und 13 rechnet SVT-AV1 4.2 intern als 11.\n# Gemessen 25.09.2026 auf dem netcup-Server (8 Kerne), 1080p mit 50\n# Bildern/s, 10 Bit: preset 8 = 0,91x, preset 9 = 1,27x Echtzeit.\n# Filme mit 30 Bildern/s laufen entsprechend schneller (preset 9: 2,2x)."},
@@ -272,7 +282,7 @@ func iniAufbau() []iniZeile {
 			"Der Aufstieg wird nur genommen, wenn er je CRF-Stufe im Mittel mindestens\n# so viel Prozent spart."},
 
 		{"mindestErsparnisProzent", func(e Einstellungen) string { return zahl(e.MindestErsparnisProzent) },
-			"Wird die Datei nicht um mindestens so viel Prozent kleiner, wird sie nicht\n# umgewandelt, sondern nur verlustfrei nach MKV umgepackt (Bild unveraendert,\n# wie NVENCForge) und als name.h264.mkv o. ae. in output gelegt; das Original\n# wandert wie sonst nach originals. Zweimal geprueft: gleich nach der\n# Qualitaetsmessung aus den Messproben hochgerechnet (spart die ganze\n# Rechenzeit) und nach dem Umwandeln an der echten Datei.\n# Ab Werk 7 (seit 0.20.0, vorher 10)."},
+			"Wird die Datei nicht um mindestens so viel Prozent kleiner, wird sie nicht\n# umgewandelt, sondern nur verlustfrei umgepackt (Bild unveraendert, wie\n# NVENCForge; MKV oder MP4, siehe container) und als name.h264.mkv o. ae.\n# in output gelegt; das Original\n# wandert wie sonst nach originals. Zweimal geprueft: gleich nach der\n# Qualitaetsmessung aus den Messproben hochgerechnet (spart die ganze\n# Rechenzeit) und nach dem Umwandeln an der echten Datei.\n# Ab Werk 7 (seit 0.20.0, vorher 10)."},
 
 		{"platzReserveGB", func(e Einstellungen) string { return strconv.Itoa(e.PlatzReserveGB) },
 			"So viel Platz bleibt immer frei. Sonst wartet das Programm."},
@@ -425,6 +435,8 @@ func wertUebernehmen(e *Einstellungen, schluessel, wert string) error {
 		e.OriginalOrdnerName = wert
 	case "originalBehandlung":
 		return behandlungLesen(e, wert)
+	case "container":
+		return containerLesen(e, wert)
 	case "preset":
 		return ganzzahl(wert, 0, 13, &e.Preset)
 	case "kerne":
@@ -492,6 +504,15 @@ func behandlungLesen(e *Einstellungen, wert string) error {
 	}
 	return fmt.Errorf("unbekannter Wert %q (erlaubt: %s, %s, %s)",
 		wert, OriginalVerschieben, OriginalLoeschen, OriginalBehalten)
+}
+
+func containerLesen(e *Einstellungen, wert string) error {
+	switch strings.ToLower(wert) {
+	case ContainerMKV, ContainerMP4:
+		e.Container = strings.ToLower(wert)
+		return nil
+	}
+	return fmt.Errorf("unbekannter Wert %q (erlaubt: %s oder %s)", wert, ContainerMKV, ContainerMP4)
 }
 
 // bittiefeLesen lässt nur 8 und 10 zu — alles andere kann SVT-AV1 hier nicht.

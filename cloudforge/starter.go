@@ -5,8 +5,8 @@
 package main
 
 // Legt die Starter für den Desktop an: ein Symbol zum Daraufziehen von
-// Dateien und Ordnern, eines für den Automatik-Lauf und eines, das das
-// Protokoll laufend zeigt.
+// Dateien und Ordnern, eines für den Automatik-Lauf, eines, das das
+// Protokoll laufend zeigt, und eines, das zwischen MKV und MP4 umschaltet.
 //
 // Warum ein Zwischenskript statt des Programms direkt: Ein Terminalfenster,
 // das ein Programm startet, schliesst sich sofort wieder, wenn dieses fertig
@@ -87,10 +87,11 @@ func StarterAnlegen() error {
 		fmt.Println("Keinen Schreibtisch gefunden - die Starter liegen nur im Anwendungsmenue.")
 		return nil
 	}
-	fmt.Println("Auf dem Schreibtisch liegen jetzt drei Symbole:")
-	fmt.Println("  \"CloudForge: Dateien umwandeln\"  - Videos oder Ordner mit der Maus darauf ziehen")
-	fmt.Println("  \"CloudForge: Automatik\"          - arbeitet einen festen Ordner ab")
-	fmt.Println("  \"CloudForge: Protokoll ansehen\"  - zeigt laufend, was CloudForge tut")
+	fmt.Println("Auf dem Schreibtisch liegen jetzt vier Symbole:")
+	fmt.Println("  \"CloudForge: Dateien umwandeln\"    - Videos oder Ordner mit der Maus darauf ziehen")
+	fmt.Println("  \"CloudForge: Automatik\"            - arbeitet einen festen Ordner ab")
+	fmt.Println("  \"CloudForge: Protokoll ansehen\"    - zeigt laufend, was CloudForge tut")
+	fmt.Println("  \"CloudForge: MKV/MP4 umschalten\"   - Ergebnisse als MKV oder als MP4 (iPhone)")
 	if !alleVertraut {
 		fmt.Println()
 		fmt.Println("Falls der Desktop beim ersten Mal nachfragt, ob er dem Starter")
@@ -201,8 +202,7 @@ read -r
 `
 }
 
-// starterListe liefert die beiden .desktop-Dateien, immer in derselben
-// Reihenfolge.
+// starterListe liefert die .desktop-Dateien, immer in derselben Reihenfolge.
 func starterListe(huellePfad string) []starterDatei {
 	// %F uebergibt alle hineingezogenen Dateien und Ordner an das Programm.
 	// Ohne diesen Platzhalter nimmt der Starter nichts entgegen.
@@ -242,9 +242,23 @@ Terminal=true
 Categories=AudioVideo;Video;
 `
 
+	// Seit 0.21.0: Jeder Klick wechselt zwischen MKV und MP4; das Fenster
+	// sagt, was ab jetzt gilt.
+	container := `[Desktop Entry]
+Type=Application
+Version=1.0
+Name=CloudForge: MKV/MP4 umschalten
+Comment=Ergebnisse als MKV oder als MP4 (spielt auf dem iPhone) speichern - das Bild bleibt AV1
+Exec=` + huellePfad + ` -container ` + containerUmschalten + `
+Icon=view-refresh
+Terminal=true
+Categories=AudioVideo;Video;
+`
+
 	return []starterDatei{
 		{"cloudforge-ziehen.desktop", ziehen},
 		{"cloudforge-automatik.desktop", automatik},
 		{"cloudforge-protokoll.desktop", protokoll},
+		{"cloudforge-container.desktop", container},
 	}
 }

@@ -23,8 +23,14 @@ func TestIstErgebnisDatei(t *testing.T) {
 		"Beispiel_1080P_OHNE-schalter.av1.mkv": true,
 		"film.mkv":                             false,
 		"film.mp4":                             false,
-		"film.av1.mp4":                         false,
-		"av1.mkv":                              false, // nur die Endung ".mkv" mit dem Namen "av1"
+		// Seit 0.21.0 legt CloudForge auch MP4 ab (container=mp4) — beide
+		// Endungen gelten immer, damit nach dem Umschalten nichts doppelt läuft.
+		"film.av1.mp4":   true,
+		"film.h264.mp4":  true,
+		"FILM.REMUX.MP4": true,
+		"film.av1.m4v":   false, // diese Endung legt CloudForge nie ab
+		"av1.mkv":        false, // nur die Endung ".mkv" mit dem Namen "av1"
+		"av1.mp4":        false,
 	}
 	for name, erwartet := range faelle {
 		if bekommen := istErgebnisDatei(filepath.Join("Daten", name)); bekommen != erwartet {
@@ -44,7 +50,7 @@ func TestUmpackSuffix(t *testing.T) {
 		}
 	}
 	e := standardWerte()
-	if p := UmpackPfadFuer(filepath.Join("Daten", "film.mp4"), "h264", e); p != filepath.Join("Daten", "output", "film.h264.mkv") {
+	if p := UmpackPfadFuer(filepath.Join("Daten", "film.mp4"), "h264", endungMKV, e); p != filepath.Join("Daten", "output", "film.h264.mkv") {
 		t.Errorf("falscher Umpack-Pfad: %s", p)
 	}
 }

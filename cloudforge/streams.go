@@ -66,6 +66,10 @@ type VideoInfo struct {
 	// UntertitelCodecs nennt je Untertitelspur ihr Format (z. B. "subrip",
 	// "mov_text"), in der Reihenfolge der Datei.
 	UntertitelCodecs []string
+
+	// Anhaenge zählt eingebettete Dateien (in MKV meist Schriften für
+	// gestaltete Untertitel). MP4 kann keine aufnehmen (container.go).
+	Anhaenge int
 }
 
 // GesamtBitrateKbps ist die Bitrate der ganzen Datei.
@@ -229,6 +233,9 @@ func ausProbe(dateiPfad string, roh probeAusgabe) (VideoInfo, error) {
 
 		case "subtitle":
 			info.UntertitelCodecs = append(info.UntertitelCodecs, s.CodecName)
+
+		case "attachment":
+			info.Anhaenge++
 		}
 	}
 

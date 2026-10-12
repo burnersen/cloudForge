@@ -84,8 +84,13 @@ type EncodeAuftrag struct {
 
 	// UntertitelCodecs nennt je Untertitelspur der Quelle ihr Format, in der
 	// Reihenfolge der Datei (aus VideoInfo). Danach richtet sich, welche
-	// Spur 1:1 kopiert und welche nach SRT übertragen wird.
+	// Spur 1:1 kopiert und welche übertragen wird.
 	UntertitelCodecs []string
+
+	// QuellBildCodec ist das Format der Filmspur der Quelle (aus VideoInfo).
+	// Gebraucht wird es nur beim Umpacken nach MP4: H.265 bekommt dann die
+	// Apple-Kennung (hevcAppleKennung).
+	QuellBildCodec string
 
 	// Verkleinern bringt das Bild auf die Grösse des Ergebnisses
 	// (verkleinernFilter, seit 0.17.0); leer = Grösse der Quelle.
@@ -154,19 +159,24 @@ func svtParameter(e Einstellungen, mitFilmKorn bool) string {
 	return strings.Join(teile, ":")
 }
 
-// untertitelArgumente kopiert jede Untertitelspur 1:1 — ausser dem
+// untertitelArgumente kopiert in MKV jede Untertitelspur 1:1 — ausser dem
 // MP4-Textformat, das nach SRT übertragen wird (siehe untertitelMP4Text).
+// Andere Formate (ASS mit Gestaltung, Bild-Untertitel) kann MKV so aufnehmen,
+// wie sie sind. In MP4 geht nur das MP4-Textformat; dorthin kommen nur Dateien
+// mit Textuntertiteln (mp4Hindernis), die dafür übertragen werden.
 // Jede Spur bekommt ihre eigene Angabe, damit keine allgemeine Regel eine
-// einzelne überdecken kann. Andere Formate (ASS mit Gestaltung, Bild-
-// Untertitel) kann MKV so aufnehmen, wie sie sind.
-func untertitelArgumente(codecs []string) []string {
+// einzelne überdecken kann.
+func untertitelArgumente(codecs []string, mp4 bool) []string {
 	if len(codecs) == 0 {
 		return []string{"-c:s", "copy"}
 	}
 	args := make([]string, 0, 2*len(codecs))
 	for nummer, codec := range codecs {
 		behandlung := "copy"
-		if codec == untertitelMP4Text {
+		switch {
+		case mp4 && codec != untertitelMP4Text:
+			behandlung = untertitelMP4Text
+		case !mp4 && codec == untertitelMP4Text:
 			behandlung = untertitelSRT
 		}
 		args = append(args, fmt.Sprintf("-c:s:%d", nummer), behandlung)
@@ -187,12 +197,18 @@ func EncodeArgumente(auftrag EncodeAuftrag, e Einstellungen) []string {
 	// Alle Spuren mitnehmen, aber an einer fehlenden Sorte nicht scheitern.
 	// Anhänge (Schriften für gestaltete Untertitel in MKV) gehören dazu —
 	// ohne sie zeigt ein Player die Untertitel in einer falschen Schrift.
-	args = append(args,
-		"-map", alleFilmspuren, "-map", "0:a?", "-map", "0:s?", "-map", "0:t?",
-		"-map_metadata", "0", "-map_chapters", "0",
-	)
+	// MP4 kann keine aufnehmen; dorthin kommen nur Dateien ohne (mp4Hindernis).
+	mp4 := istMP4(auftrag.Ziel)
+	args = append(args, "-map", alleFilmspuren, "-map", "0:a?", "-map", "0:s?")
+	if !mp4 {
+		args = append(args, "-map", "0:t?")
+	}
+	args = append(args, "-map_metadata", "0", "-map_chapters", "0")
 	if auftrag.Umpacken {
 		args = append(args, "-c:v", "copy")
+		if mp4 && auftrag.QuellBildCodec == "hevc" {
+			args = append(args, "-tag:v:0", hevcAppleKennung)
+		}
 	} else {
 		if auftrag.Verkleinern != "" {
 			args = append(args, "-vf", auftrag.Verkleinern)
@@ -202,10 +218,17 @@ func EncodeArgumente(auftrag EncodeAuftrag, e Einstellungen) []string {
 	}
 	// Ton immer 1:1 (seit 0.14.0, Nutzerwunsch): ein zweites Mal
 	// verlustbehaftet zu kodieren kostet nur Qualität, und MKV nimmt jede
-	// Tonspur so auf, wie sie ist.
+	// Tonspur so auf, wie sie ist. In MP4 kommen nur Dateien, deren Ton dort
+	// unverändert hineinpasst (mp4Hindernis).
 	args = append(args, "-c:a", "copy")
-	args = append(args, untertitelArgumente(auftrag.UntertitelCodecs)...)
-	args = append(args, "-c:t", "copy")
+	args = append(args, untertitelArgumente(auftrag.UntertitelCodecs, mp4)...)
+	if mp4 {
+		// Das Inhaltsverzeichnis der Datei an den Anfang: Sonst muss ein
+		// Player, der aus der Cloud abspielt, erst das Dateiende laden.
+		args = append(args, "-movflags", "+faststart")
+	} else {
+		args = append(args, "-c:t", "copy")
+	}
 
 	return append(args, auftrag.Ziel)
 }

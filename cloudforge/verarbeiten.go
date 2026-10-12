@@ -264,8 +264,11 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 	// Lauf-ctx, nicht mit encodeCtx: die Notbremse gilt nur dieser Datei.
 	a.naechsteVorabHolen(ctx, info.GroesseBytes)
 
+	endung := a.endungWaehlen(info, false)
+	zielPfad := ZielPfadFuer(quellPfad, endung, e)
+
 	anz.Schritt(schrittWandeln, schritteGesamt, "Umwandeln")
-	lokalesErgebnis := filepath.Join(arbeitsplatz, "ergebnis.mkv")
+	lokalesErgebnis := filepath.Join(arbeitsplatz, "ergebnis"+endung)
 	auftrag := EncodeAuftrag{
 		Quelle:           lokaleQuelle,
 		Ziel:             lokalesErgebnis,
@@ -306,7 +309,7 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 	anz.SchrittFertig("alles in Ordnung")
 
 	// 5. Ablegen, danach erst das Original.
-	meldung, originalPfad, err := a.ablegen(ctx, lokalesErgebnis, kandidat.ZielPfad, quellPfad, ergebnisBytes)
+	meldung, originalPfad, err := a.ablegen(ctx, lokalesErgebnis, zielPfad, quellPfad, ergebnisBytes)
 	if err != nil {
 		return fehler("Ablegen fehlgeschlagen", err)
 	}
@@ -321,9 +324,20 @@ func (a *Ablauf) EineDatei(ctx context.Context, quellPfad string) DateiErgebnis 
 		Bilder:        int64(math.Round(bilder)),
 		RechenSek:     time.Since(beginn).Seconds(),
 	})
-	ergebnis.ErgebnisPfad = kandidat.ZielPfad
+	ergebnis.ErgebnisPfad = zielPfad
 	ergebnis.OriginalPfad = originalPfad
 	return ergebnis
+}
+
+// endungWaehlen entscheidet, ob das Ergebnis MKV oder MP4 wird
+// (ergebnisEndung). Wird es trotz container=mp4 MKV, steht der Grund im
+// Fenster und im Protokoll — sonst wundert sich der Nutzer über die MKV.
+func (a *Ablauf) endungWaehlen(info VideoInfo, umpacken bool) string {
+	endung, mkvGrund := ergebnisEndung(info, a.Einstellungen, umpacken)
+	if mkvGrund != "" {
+		a.Anzeige.Zeile("  Wird MKV statt MP4 - Grund: %s.", mkvGrund)
+	}
+	return endung
 }
 
 // ablegen bringt ein fertiges Ergebnis in den output-Ordner — unter
@@ -361,7 +375,7 @@ type umpackAuftrag struct {
 	beginn       time.Time
 }
 
-// umpackenUndAblegen packt die geholte Datei verlustfrei nach MKV um, prüft
+// umpackenUndAblegen packt die geholte Datei verlustfrei um (MKV oder MP4), prüft
 // das Ergebnis, legt es in den output-Ordner und räumt das Original weg — wie
 // NVENCForge, wenn sich das Umwandeln nicht lohnt (Nutzerwunsch 26.09.2026).
 // Das Bild bleibt Bit für Bit gleich, nur der Behälter wechselt. Danach gilt
@@ -377,6 +391,8 @@ func (a *Ablauf) umpackenUndAblegen(ctx context.Context, u umpackAuftrag) DateiE
 
 	// Versteckter Vorlauf (ohne Neukodieren geschnittene MP4) lässt sich nicht
 	// verlustfrei nach MKV bringen — dann bleibt das Original, wie vor 0.11.0.
+	// Für MP4 als Ziel gilt dasselbe: ob ffmpeg das Ausblenden dort sauber
+	// mitnimmt, ist nicht geprüft.
 	versteckt, err := VorlaufVersteckt(e.FFprobePfad, u.lokaleQuelle)
 	if err != nil {
 		return fehler("Vor dem Umpacken", err)
@@ -389,16 +405,17 @@ func (a *Ablauf) umpackenUndAblegen(ctx context.Context, u umpackAuftrag) DateiE
 				"die Datei beginnt mit verstecktem Vorlauf (ohne Neukodieren geschnitten) - Original bleibt",
 		})
 	}
-	anz.Zeile("  Lohnt nicht umzuwandeln: %s - wird verlustfrei nach MKV umgepackt.", u.grund)
+	endung := a.endungWaehlen(u.info, true)
+	anz.Zeile("  Lohnt nicht umzuwandeln: %s - wird verlustfrei nach %s umgepackt.", u.grund, containerName(endung))
 
 	// Auch hier schon die nächste Datei holen; läuft das schon, bleibt es dabei.
 	a.naechsteVorabHolen(ctx, u.info.GroesseBytes)
 
 	// 3. Umpacken: Bild unverändert, Ton und Untertitel wie beim Umwandeln.
 	anz.Schritt(schrittWandeln, schritteGesamt, "Umpacken")
-	lokalesErgebnis := filepath.Join(u.arbeitsplatz, "umgepackt.mkv")
+	lokalesErgebnis := filepath.Join(u.arbeitsplatz, "umgepackt"+endung)
 	auftrag := EncodeAuftrag{Quelle: u.lokaleQuelle, Ziel: lokalesErgebnis,
-		UntertitelCodecs: u.info.UntertitelCodecs, Umpacken: true}
+		UntertitelCodecs: u.info.UntertitelCodecs, QuellBildCodec: u.info.VideoCodec, Umpacken: true}
 	if err := Kodieren(ctx, auftrag, e, u.info.DauerSek, anz.Stand); err != nil {
 		return fehler("Umpacken fehlgeschlagen", err)
 	}
@@ -417,7 +434,7 @@ func (a *Ablauf) umpackenUndAblegen(ctx context.Context, u umpackAuftrag) DateiE
 	anz.SchrittFertig("alles in Ordnung")
 
 	// 5. Ablegen, danach erst das Original.
-	zielPfad := UmpackPfadFuer(u.quellPfad, u.info.VideoCodec, e)
+	zielPfad := UmpackPfadFuer(u.quellPfad, u.info.VideoCodec, endung, e)
 	meldung, originalPfad, err := a.ablegen(ctx, lokalesErgebnis, zielPfad, u.quellPfad, ergebnisBytes)
 	if err != nil {
 		return fehler("Ablegen fehlgeschlagen", err)

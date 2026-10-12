@@ -47,7 +47,8 @@ CloudForge ist für große Video-Sammlungen in einem Cloud-Speicher gedacht, der
 Bedient wird es ohne Terminal: Dateien oder ganze Ordner mit der Maus auf ein Schreibtisch-Symbol ziehen, fertig.
 
 - **Auto-CQ mit VMAF** – an mehreren Stellen jedes Films wird probeweise umgewandelt und mit dem Original verglichen. Gewählt wird die kleinste Datei, die das Qualitätsziel noch hält. Videos unter 1080p werden dafür auf 1080p vergrößert gemessen – so, wie sie im Vollbild aussehen.
-- **Lohnt sich nicht? Dann nur umpacken** – ist eine Datei schon AV1, kleiner als 720p, schon sehr schlank oder würde sie kaum kleiner, wird sie verlustfrei nach MKV umgepackt. Das Bild bleibt bitgleich.
+- **Lohnt sich nicht? Dann nur umpacken** – ist eine Datei schon AV1, kleiner als 720p, schon sehr schlank oder würde sie kaum kleiner, wird sie verlustfrei umgepackt. Das Bild bleibt bitgleich.
+- **MKV oder MP4** – ab Werk MKV; auf Knopfdruck MP4, das iPhone und andere Apple-Geräte ohne Zusatz-App abspielen. Das Bild bleibt AV1, der Ton 1:1.
 - **Prüfkette** – Größe, Spieldauer, Ton- und Untertitelspuren werden mit dem Original verglichen; auf Wunsch wird jedes Ergebnis komplett durchgelesen.
 - **Abbrechen ist ungefährlich** – Fenster zu oder Strg+C: Halbfertiges verschwindet, das Original bleibt unberührt, Fertiges bleibt fertig.
 - **Nächste Datei vorab holen** – während ein Film umgewandelt wird, kommt der nächste schon aus der Cloud (spart etwa 3 Minuten je Film).
@@ -64,7 +65,7 @@ Jede Datei durchläuft fünf Schritte:
 |---|---|
 | **1. Datei holen** | Kopie aus dem Cloud-Ordner auf die lokale Platte. Auf dem Cloud-Ordner selbst wird nie gerechnet. Kommt dabei 10 Minuten lang kein einziges Byte an (Cloud hängt), gibt CloudForge diese Datei auf und macht mit der nächsten weiter, statt ewig zu warten. |
 | **2. Qualität messen** | Kurze Stücke an 5 Stellen des Films werden probeweise umgewandelt und per **VMAF** (ein Maß für die Bildqualität, 100 = wie das Original) verglichen. Gewählt wird der höchste **CRF** (Kompressionsstufe), der das Ziel mindestens hält – ab Werk ein 5-%-Perzentil von 92 (95 % der gemessenen Bilder erreichen mindestens VMAF 92) und zugleich ein Mittelwert von mindestens 95. Danach steht auch fest, wie groß das Ergebnis etwa wird; spart es zu wenig, wird die Datei nur umgepackt. Liegt die Vorhersage knapp an der Schwelle, prüft eine Größenprobe an 20 Stellen über den ganzen Film nach, bevor umgewandelt wird. |
-| **3. Umwandeln** | SVT-AV1, ab Werk preset 9 und 10 Bit (gegen Streifen in Farbverläufen). Ton, Untertitel, Kapitel und Anhänge (etwa Schriften) werden 1:1 übernommen. Einzige Ausnahme: MP4-Textuntertitel kann MKV nicht aufnehmen, sie kommen als SRT an (gleicher Text, gleiche Zeiten). Ein eingebettetes Vorschaubild entfällt. Auf Wunsch wird dabei verkleinert (`maxAufloesung`, etwa 4K auf 1080p); die Farbangaben der Quelle – auch HDR – gehen unverändert mit. |
+| **3. Umwandeln** | SVT-AV1, ab Werk preset 9 und 10 Bit (gegen Streifen in Farbverläufen). Ton, Untertitel, Kapitel und Anhänge (etwa Schriften) werden 1:1 übernommen. Einzige Ausnahme: MP4-Textuntertitel kann MKV nicht aufnehmen, sie kommen als SRT an (gleicher Text, gleiche Zeiten). Ein eingebettetes Vorschaubild entfällt. Mit `container=mp4` kommen Textuntertitel ins MP4-Textformat; was MP4 nicht verlustfrei aufnimmt (etwa DTS-Ton, Bild-Untertitel, Schrift-Anhänge), bleibt in dieser einen Datei MKV, der Grund steht im Protokoll. Auf Wunsch wird dabei verkleinert (`maxAufloesung`, etwa 4K auf 1080p); die Farbangaben der Quelle – auch HDR – gehen unverändert mit. |
 | **4. Prüfen** | Das Ergebnis wird gegen das Original geprüft: Größe, Spieldauer, alle Spuren. |
 | **5. Ergebnis ablegen** | Hochladen unter einem Zwischennamen – unter seinem richtigen Namen erscheint das Ergebnis erst, wenn es vollständig da ist. Erst dann wandert das Original nach `originals/`. |
 
@@ -78,7 +79,7 @@ Daten/
     └── Film.mp4          dein Original, unverändert
 ```
 
-Nur umgepackte Dateien heißen nach ihrem alten Format, zum Beispiel `Film.h264.mkv`.
+Nur umgepackte Dateien heißen nach ihrem alten Format, zum Beispiel `Film.h264.mkv`. Mit `container=mp4` enden die Namen auf `.mp4`, etwa `Film.av1.mp4`.
 
 Der Name des Ergebnisses wird dabei aufgeräumt wie in NVENCForge: Leer- und Sonderzeichen werden zu Punkten, Angaben wie `720p` stehen am Ende. Aus `Mein Film (2020) [1080p].mp4` wird `Mein.Film.2020.1080p.av1.mkv`. Das Original behält seinen Namen.
 
@@ -107,7 +108,7 @@ Das Paket enthält das Einrichtungs-Skript, die Anleitung und das Programm für 
 
 - kopiert CloudForge nach `~/cloudforge/` (eine vorhandene Fassung bleibt als `cloudforge.vorher` erhalten),
 - lädt ffmpeg und ffprobe nach `~/cloudforge/tools/` (rund 140 MB, bevorzugt Fassung 8.1, mit der die Qualitätswerte gemessen wurden),
-- legt die Einstellungsdatei `~/cloudforge/cloudforge.ini` und drei Schreibtisch-Symbole an (gleich als vertrauenswürdig markiert),
+- legt die Einstellungsdatei `~/cloudforge/cloudforge.ini` und vier Schreibtisch-Symbole an (gleich als vertrauenswürdig markiert),
 - legt die Anleitung auf den Schreibtisch und macht `cloudforge` im Terminal aufrufbar.
 
 Mehrmals ausführen schadet nicht, die Einstellungen bleiben erhalten. **Aktualisieren** geht genauso. Was sich in welcher Fassung geändert hat, steht bei den [Releases](https://github.com/burnersen/cloudForge/releases).
@@ -119,6 +120,7 @@ Mehrmals ausführen schadet nicht, die Einstellungen bleiben erhalten. **Aktuali
 | **CloudForge: Dateien umwandeln** | Videos oder ganze Ordner mit der Maus daraufziehen. Ein Fenster zeigt die Übersicht; am Ende steht, wo jede Datei liegt, und die Bilanz. |
 | **CloudForge: Automatik** | Arbeitet immer denselben Ordner ab. Beim ersten Mal fragt es, welcher Ordner das sein soll. |
 | **CloudForge: Protokoll ansehen** | Zeigt, was gerade passiert – auch wenn der Zeitplan ohne Fenster arbeitet. |
+| **CloudForge: MKV/MP4 umschalten** | Jeder Klick wechselt, ob Ergebnisse als MKV oder als MP4 (spielt auf dem iPhone) gespeichert werden; das Fenster sagt, was ab jetzt gilt. |
 
 Alles geht auch im Terminal:
 
@@ -130,6 +132,7 @@ Alles geht auch im Terminal:
 | `cloudforge -analyse DATEI` | nur messen, welche Qualitätsstufe gewählt würde |
 | `cloudforge -zeitplan an` | alle 30 Minuten von selbst abarbeiten (`aus` schaltet es ab) |
 | `cloudforge -protokoll` | das Protokoll laufend ansehen |
+| `cloudforge -container mp4` | Ergebnisse ab jetzt als MP4 speichern (`mkv` zurück, `umschalten` wechselt) |
 | `cloudforge -starter` | die Schreibtisch-Symbole neu anlegen |
 | `cloudforge -hilfe` | alle Möglichkeiten |
 
@@ -147,6 +150,7 @@ Die Einstellungen stehen in `~/cloudforge/cloudforge.ini`; jeder Eintrag ist dor
 | `zielVMAFPerzentil` | `92` | Qualitätsziel für das Perzentil, gilt als Untergrenze. 92 ergibt im Schnitt so große Dateien wie Mittelwert 96 (gemessen an 6 Filmen). |
 | `zielVMAF` | `95` | Qualitätsziel für den Mittelwert – gilt immer, beim Perzentil als Sicherheitsnetz zusätzlich. So wird keine Datei schlechter als mit diesem Wert allein. 93 = sichtbar weicher, 98 = kaum vom Original zu unterscheiden. |
 | `originalBehandlung` | `verschieben` | `verschieben` (nach `originals/`), `loeschen` oder `behalten` |
+| `container` | `mkv` | `mkv` oder `mp4` (spielt auf iPhone und Mac ohne Zusatz-App). Das Bild ist in beiden dasselbe AV1. Was MP4 nicht verlustfrei aufnimmt, bleibt MKV. |
 | `mindestErsparnisProzent` | `7` | Wird eine Datei nicht mindestens so viel kleiner, wird sie nur verlustfrei umgepackt. |
 | `kostenDeckelProzent` | `0` (aus) | Deckel wie bei NVENCForge: das neue Bild darf höchstens so viel Prozent des alten kosten – notfalls unter dem Qualitätsziel. |
 | `messfensterAnzahl`, `messfensterSek` | `4`, `9` | An so vielen Stellen wird die Qualität gemessen, je so viele Sekunden lang (nie unter 8). |
@@ -169,7 +173,7 @@ Beim Start bringt CloudForge die Datei in Form: Reihenfolge und Erklärungen wie
 - **Auf dem Cloud-Ordner wird nie gerechnet:** erst herunterkopieren, dann arbeiten, dann hochkopieren.
 - **Ein abgebrochener Upload sieht nie wie ein fertiges Ergebnis aus:** Dateien erscheinen erst vollständig unter ihrem richtigen Namen.
 - **Das Original wird erst bewegt, wenn das Ergebnis die Prüfkette bestanden hat** – und ab Werk nur nach `originals/` verschoben, nicht gelöscht.
-- **Nichts wird doppelt gemacht:** Was schon ein Ergebnis in `output/` hat, wird übersprungen. Die Ordner `output/` und `originals/` sowie Dateien auf `.av1.mkv`, `.h264.mkv`, `.h265.mkv` und `.remux.mkv` fasst CloudForge nie an.
+- **Nichts wird doppelt gemacht:** Was schon ein Ergebnis in `output/` hat, wird übersprungen. Die Ordner `output/` und `originals/` sowie Dateien auf `.av1.mkv`, `.h264.mkv`, `.h265.mkv` und `.remux.mkv` (ebenso mit `.mp4` am Ende) fasst CloudForge nie an.
 - **Platz in der Cloud wird erst frei, wenn du die `originals/`-Ordner löschst.** Schau dir vorher ein paar Ergebnisse an.
 
 ## 🔨 Selbst bauen

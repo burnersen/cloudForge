@@ -148,9 +148,9 @@ func laufSperren(ctx context.Context, e Einstellungen, anz *Anzeige) (func(), er
 // aus, und SVT-AV1 schreibt sie nicht in die Datei — so lässt sich später
 // jede Datei ihrer Einstellung zuordnen.
 func einstellungenText(e Einstellungen) string {
-	return fmt.Sprintf("Ziel-VMAF %s, Preset %d, %d Bit, Variance Boost %s, tune 0 %s, Filmkorn %s, %s gleichzeitig",
+	return fmt.Sprintf("Ziel-VMAF %s, Preset %d, %d Bit, Variance Boost %s, tune 0 %s, Filmkorn %s, %s gleichzeitig, Ergebnis als %s",
 		vmafZielText(e), e.Preset, e.Bittiefe, varianceBoostText(e), anAus(e.Tune0),
-		filmKornText(e), dateienText(max(e.ParallelDateien, 1)))
+		filmKornText(e), dateienText(max(e.ParallelDateien, 1)), strings.ToUpper(e.Container))
 }
 
 // vmafZielText nennt das Ziel zusammen mit dem Wert, an dem gemessen wird

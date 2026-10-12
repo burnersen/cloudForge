@@ -31,7 +31,7 @@ TEIL 1 - SO BENUTZT DU ES (der Alltag)
   5. Ein schwarzes Fenster geht auf. Darin steht eine feste, farbige
      Übersicht, die sich laufend aktualisiert (wie bei NVENCForge):
 
-       CloudForge 0.20.0                                   Datei 2 von 3
+       CloudForge 0.21.0                                   Datei 2 von 3
        -----------------------------------------------------------------
        OK     Film1.mp4  5,84 GB → 2,45 GB  (–58 %)  VMAF 92,4 (Mittel 96,3)  in 42 Min
 
@@ -89,10 +89,28 @@ Beispiel: Aus  Daten/Film.mp4  wird  Daten/output/Film.av1.mkv,
 
 Lohnt sich das Umwandeln nicht (die Datei ist schon AV1, kleiner als 720p,
 schon sehr schlank oder würde kaum kleiner), wird sie - wie bei NVENCForge -
-nur verlustfrei nach MKV umgepackt: Das Bild bleibt genau gleich. Sie heißt
+nur verlustfrei umgepackt: Das Bild bleibt genau gleich. Sie heißt
 dann zum Beispiel
 Daten/output/Film.h264.mkv  (die Endung nennt das alte Format), und das
 Original wandert wie sonst nach "originals".
+
+MKV ODER MP4 (seit 0.21.0)
+  Ab Werk speichert CloudForge die Ergebnisse als MKV. iPhone, iPad und Mac
+  öffnen ohne Zusatz-App aber nur MP4. Ein Doppelklick auf das Symbol
+  "CloudForge: MKV/MP4 umschalten" wechselt zwischen beiden; das Fenster
+  sagt, was ab jetzt gilt. Mit MP4 heißen die Ergebnisse  Film.av1.mp4
+  bzw.  Film.h264.mp4. Das Bild ist in beiden dasselbe AV1, der Ton bleibt
+  1:1.
+  MP4 nimmt aber weniger auf als MKV. Eine Datei bleibt deshalb auch im
+  MP4-Betrieb MKV, wenn sie etwas enthält, das MP4 nicht verlustfrei
+  aufnehmen kann oder das iPhone nicht abspielt: Ton außer AAC, MP3, AC-3,
+  E-AC-3 oder ALAC (etwa DTS, TrueHD, Opus), Bild-Untertitel (Blu-ray,
+  DVD) oder Anhänge wie Schriften. Der Grund steht dann im Fenster und im
+  Protokoll ("Wird MKV statt MP4 - Grund: ..."). Text-Untertitel kommen
+  ins MP4-Textformat: Text und Zeiten bleiben, Gestaltung wie Schrift und
+  Farbe fällt weg.
+  Schon fertige Ergebnisse bleiben, wie sie sind - umgeschaltet wird nur
+  für die Dateien, die danach drankommen.
 
 Den Namen des Ergebnisses räumt CloudForge dabei auf, genau wie NVENCForge
 (seit 0.14.0): Leer- und Sonderzeichen werden zu Punkten, doppelte Punkte
@@ -142,7 +160,8 @@ TEIL 2 - WICHTIG ZU WISSEN
 * NICHTS WIRD DOPPELT GEMACHT - DIE ORDNER ENTSCHEIDEN.
   Was schon ein Ergebnis im Ordner "output" hat, wird übersprungen; die
   Ordner "output" und "originals" und alles, was auf .av1.mkv, .h264.mkv,
-  .h265.mkv oder .remux.mkv endet, fasst CloudForge nie an. Eine Liste, was
+  .h265.mkv oder .remux.mkv endet (ebenso mit .mp4 statt .mkv), fasst
+  CloudForge nie an. Eine Liste, was
   wann umgewandelt wurde, führt es nicht. Du kannst also ruhig einen ganzen
   Ordner mehrmals draufziehen.
   NOCHMAL UMWANDELN (zum Beispiel mit anderen Einstellungen): das Original
@@ -326,6 +345,13 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
         loeschen     = Original wird gelöscht (spart sofort Platz)
         behalten     = Original bleibt, wo es ist
 
+    container=mkv
+        mkv oder mp4 (seit 0.21.0): in welcher "Hülle" das Ergebnis
+        gespeichert wird. mp4 spielt auf iPhone und Mac ohne Zusatz-App.
+        Am einfachsten umschalten mit dem Symbol "CloudForge: MKV/MP4
+        umschalten". Was MP4 nicht verlustfrei aufnimmt, bleibt MKV (siehe
+        Teil 1, "MKV oder MP4").
+
     vmafPerzentil=5
         Woran CloudForge die Bildqualität misst (seit 0.19.0).
         5 = am 5-%-Perzentil: 95 % der gemessenen Bilder sind mindestens so
@@ -389,8 +415,9 @@ anderen Texteditor). Jede Einstellung ist darin erklärt. Die wichtigsten:
 
     mindestErsparnisProzent=7
         Wird eine Datei nicht mindestens so viel kleiner, wird sie nicht
-        umgewandelt, sondern nur verlustfrei nach MKV umgepackt (Bild bleibt
-        gleich) und in "output" gelegt - wie bei NVENCForge. CloudForge rechnet
+        umgewandelt, sondern nur verlustfrei umgepackt (Bild bleibt gleich,
+        MKV oder MP4 wie bei container) und in "output" gelegt - wie bei
+        NVENCForge. CloudForge rechnet
         das gleich nach der Qualitätsmessung aus (nach 2-4 Minuten) - so wird
         keine Zeit an Dateien verschwendet, die sich nicht lohnen.
         Liegt die Vorhersage knapp an dieser Schwelle, wandelt CloudForge
@@ -530,7 +557,9 @@ fehlen. Eine vertippte Einstellung nennt CloudForge dabei beim Start.
 Ton, Untertitel, Kapitel und Anhänge (etwa Schriften) übernimmt CloudForge
 1:1. Nur Untertitel im MP4-Textformat kann MKV nicht aufnehmen - sie kommen
 als SRT an (gleicher Text, gleiche Zeiten). Ein eingebettetes Vorschaubild
-entfällt.
+entfällt. Mit container=mp4 gilt das Umgekehrte: Text-Untertitel kommen ins
+MP4-Textformat, und Anhänge kann MP4 gar nicht aufnehmen - solche Dateien
+bleiben MKV.
 
 
 ===============================================================================
@@ -549,6 +578,9 @@ Alles, was die Symbole können, geht auch im Terminal:
     cloudforge -zeitplan an             alle 30 Minuten von selbst abarbeiten
     cloudforge -zeitplan aus            Zeitplan wieder ausschalten
     cloudforge -protokoll               Protokoll laufend ansehen
+    cloudforge -container mp4           Ergebnisse ab jetzt als MP4
+    cloudforge -container mkv           ... wieder als MKV
+    cloudforge -container umschalten    wechseln (wie das Symbol)
     cloudforge -hilfe                   alle Möglichkeiten
 
 Falls "cloudforge" allein nicht gefunden wird (direkt nach der Einrichtung,

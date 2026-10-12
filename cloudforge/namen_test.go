@@ -45,13 +45,13 @@ func TestErgebnisPfadeSindBereinigt(t *testing.T) {
 	quelle := filepath.Join("Daten", "Mein Film (2020).mp4")
 	ausgabe := filepath.Join("Daten", "output")
 
-	if got := ZielPfadFuer(quelle, e); got != filepath.Join(ausgabe, "Mein.Film.2020.av1.mkv") {
+	if got := ZielPfadFuer(quelle, endungMKV, e); got != filepath.Join(ausgabe, "Mein.Film.2020.av1.mkv") {
 		t.Errorf("umgewandelt: %s", got)
 	}
-	if got := UmpackPfadFuer(quelle, "h264", e); got != filepath.Join(ausgabe, "Mein.Film.2020.h264.mkv") {
+	if got := UmpackPfadFuer(quelle, "h264", endungMKV, e); got != filepath.Join(ausgabe, "Mein.Film.2020.h264.mkv") {
 		t.Errorf("umgepackt: %s", got)
 	}
-	if got := ZielPfadFuer(filepath.Join("Daten", "---.mp4"), e); got != filepath.Join(ausgabe, "---.av1.mkv") {
+	if got := ZielPfadFuer(filepath.Join("Daten", "---.mp4"), endungMKV, e); got != filepath.Join(ausgabe, "---.av1.mkv") {
 		t.Errorf("ohne brauchbaren Namen: %s", got)
 	}
 }

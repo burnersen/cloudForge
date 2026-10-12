@@ -14,11 +14,11 @@ import (
 // nach SRT übertragen. Alle anderen Formate bleiben 1:1 — gerade ASS, dessen
 // Gestaltung SRT verlieren würde. Jede Spur bekommt ihre eigene Angabe.
 func TestUntertitelArgumente(t *testing.T) {
-	if got := untertitelArgumente(nil); !slices.Equal(got, []string{"-c:s", "copy"}) {
+	if got := untertitelArgumente(nil, false); !slices.Equal(got, []string{"-c:s", "copy"}) {
 		t.Errorf("ohne Untertitel: %v", got)
 	}
 
-	got := untertitelArgumente([]string{"subrip", "mov_text", "ass", "hdmv_pgs_subtitle"})
+	got := untertitelArgumente([]string{"subrip", "mov_text", "ass", "hdmv_pgs_subtitle"}, false)
 	erwartet := []string{"-c:s:0", "copy", "-c:s:1", "srt", "-c:s:2", "copy", "-c:s:3", "copy"}
 	if !slices.Equal(got, erwartet) {
 		t.Errorf("bekommen %v, erwartet %v", got, erwartet)

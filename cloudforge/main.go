@@ -14,6 +14,7 @@ package main
 //   cloudforge -starter            legt die Symbole auf dem Schreibtisch an
 //   cloudforge -zeitplan an|aus    alle 30 Minuten die Automatik im Hintergrund
 //   cloudforge -protokoll          zeigt das Protokoll laufend an
+//   cloudforge -container mkv|mp4|umschalten  Behaelter der Ergebnisse
 //   cloudforge -hilfe              erklaert die Aufrufe
 
 import (
@@ -31,7 +32,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.20.0"
+const appVersion = "0.21.0"
 
 func main() {
 	err := starten()
@@ -55,6 +56,7 @@ func starten() error {
 	hintergrund := flag.Bool("hintergrund", false, "mit -automatik: ohne Fenster, fuer den Zeitplan")
 	zeitplan := flag.String("zeitplan", "", "an oder aus: alle 30 Minuten die Automatik-Ordner abarbeiten")
 	protokollZeigen := flag.Bool("protokoll", false, "das Protokoll laufend ansehen")
+	container := flag.String("container", "", "mkv, mp4 oder umschalten: Behaelter der Ergebnisse festlegen")
 	hilfe := flag.Bool("hilfe", false, "Erklaerung der Aufrufe")
 	iniPfad := flag.String("ini", standardINIPfad(), "Pfad zur Einstellungsdatei")
 	flag.Parse()
@@ -78,10 +80,13 @@ func starten() error {
 		fmt.Printf("  %s\n", hinweis)
 	}
 
-	// Starter und Protokoll brauchen kein ffmpeg — das darf auch gehen,
-	// bevor alles Weitere eingerichtet ist.
+	// Starter, Behälter und Protokoll brauchen kein ffmpeg — das darf auch
+	// gehen, bevor alles Weitere eingerichtet ist.
 	if *starter {
 		return StarterAnlegen()
+	}
+	if *container != "" {
+		return ContainerSchalten(*iniPfad, e, *container)
 	}
 	if *protokollZeigen {
 		ctx, aufhoeren := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
@@ -821,6 +826,11 @@ AUFRUFE IM TERMINAL
 
   cloudforge -protokoll          zeigt laufend, was CloudForge tut - auch im
                                  Hintergrund (Symbol "Protokoll ansehen").
+
+  cloudforge -container mp4      speichert Ergebnisse ab jetzt als MP4 (spielt
+                                 auf dem iPhone ohne Zusatz-App), "mkv" wieder
+                                 als MKV, "umschalten" wechselt (Symbol
+                                 "MKV/MP4 umschalten"). Das Bild bleibt AV1.
 
   cloudforge -ini PFAD           andere Einstellungsdatei benutzen.
   cloudforge -hilfe              diese Uebersicht.

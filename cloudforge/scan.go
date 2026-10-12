@@ -26,28 +26,32 @@ var videoEndungen = map[string]bool{
 }
 
 // zielSuffix hängt vor der Endung, damit ein Ergebnis auf den ersten Blick
-// erkennbar ist: "film.mp4" wird zu "film.av1.mkv".
+// erkennbar ist: "film.mp4" wird zu "film.av1.mkv" (oder "film.av1.mp4",
+// siehe container.go).
 const zielSuffix = ".av1"
-const zielEndung = ".mkv"
 
 // ergebnisSuffixe kennzeichnen alles, was CloudForge selbst erzeugt: ".av1"
 // beim Umwandeln, die übrigen beim verlustfreien Umpacken (seit 0.11.0, wie
 // NVENCForge: dort heissen sie skipInputSuffixes). Eine Datei mit einer dieser
-// Endungen vor ".mkv" wird nie wieder angefasst — so erkennt CloudForge seine
-// Ergebnisse, auch wenn sie längst nicht mehr im output-Ordner liegen.
+// Kennungen vor ".mkv" oder ".mp4" wird nie wieder angefasst — so erkennt
+// CloudForge seine Ergebnisse, auch wenn sie längst nicht mehr im
+// output-Ordner liegen. Der Preis seit 0.21.0: Ein fremdes Original namens
+// "film.h264.mp4" gilt ebenfalls als Ergebnis und bleibt liegen.
 var ergebnisSuffixe = []string{".av1", ".h264", ".h265", ".remux"}
 
 // istErgebnisDatei sagt, ob der Name nach einem Ergebnis von CloudForge
-// aussieht ("film.av1.mkv", "film.h264.mkv", ...).
+// aussieht ("film.av1.mkv", "film.h264.mp4", ...).
 func istErgebnisDatei(pfad string) bool {
 	name := strings.ToLower(filepath.Base(pfad))
-	if !strings.HasSuffix(name, zielEndung) {
-		return false
-	}
-	ohneEndung := strings.TrimSuffix(name, zielEndung)
-	for _, suffix := range ergebnisSuffixe {
-		if strings.HasSuffix(ohneEndung, suffix) {
-			return true
+	for _, endung := range ergebnisEndungen {
+		if !strings.HasSuffix(name, endung) {
+			continue
+		}
+		ohneEndung := strings.TrimSuffix(name, endung)
+		for _, suffix := range ergebnisSuffixe {
+			if strings.HasSuffix(ohneEndung, suffix) {
+				return true
+			}
 		}
 	}
 	return false
@@ -83,19 +87,20 @@ const (
 	ImOriginalOrdner   Uebersprungen = "liegt im Ordner fuer Originale, wurde schon umgewandelt"
 )
 
-// Kandidat ist eine gefundene Datei samt Urteil.
+// Kandidat ist eine gefundene Datei samt Urteil. Wohin das Ergebnis kommt,
+// steht erst beim Verarbeiten fest: ob MKV oder MP4, hängt seit 0.21.0 auch
+// davon ab, ob umgewandelt oder nur umgepackt wird (container.go).
 type Kandidat struct {
 	Info             VideoInfo
 	Grund            Uebersprungen
 	Fehler           error
-	ZielPfad         string // wohin das Ergebnis in der Cloud soll
 	SparSchaetzungMB float64
 }
 
 // Lohnt sagt, ob die Datei umgewandelt wird.
 func (k Kandidat) Lohnt() bool { return k.Grund == NichtUebersprungen && k.Fehler == nil }
 
-// NurUmpacken sagt, ob die Datei statt umgewandelt nur verlustfrei nach MKV
+// NurUmpacken sagt, ob die Datei statt umgewandelt nur verlustfrei
 // umgepackt wird (seit 0.11.0, wie NVENCForge): Sie ist schon AV1, ihre
 // Bitrate liegt so tief, dass ein Umwandeln nichts mehr herausholt, oder sie
 // ist kleiner als 720p (seit 0.12.0).
@@ -215,22 +220,23 @@ func ergebnisName(quellPfad string) string {
 }
 
 // ZielPfadFuer liefert den Ort des Ergebnisses: ein Unterordner neben der
-// Quelldatei, so wie beim Windows-Pendant.
-func ZielPfadFuer(quellPfad string, e Einstellungen) string {
+// Quelldatei, so wie beim Windows-Pendant. endung ist ".mkv" oder ".mp4"
+// (ergebnisEndung).
+func ZielPfadFuer(quellPfad, endung string, e Einstellungen) string {
 	return filepath.Join(filepath.Dir(quellPfad), e.AusgabeOrdnerName,
-		ergebnisName(quellPfad)+zielSuffix+zielEndung)
+		ergebnisName(quellPfad)+zielSuffix+endung)
 }
 
 // UmpackPfadFuer liefert den Ort eines umgepackten Ergebnisses:
-// "film.mp4" mit H.264 wird zu "output/film.h264.mkv".
-func UmpackPfadFuer(quellPfad, videoCodec string, e Einstellungen) string {
+// "film.mp4" mit H.264 wird zu "output/film.h264.mkv" (oder ".mp4").
+func UmpackPfadFuer(quellPfad, videoCodec, endung string, e Einstellungen) string {
 	return filepath.Join(filepath.Dir(quellPfad), e.AusgabeOrdnerName,
-		ergebnisName(quellPfad)+umpackSuffix(videoCodec)+zielEndung)
+		ergebnisName(quellPfad)+umpackSuffix(videoCodec)+endung)
 }
 
 // VorhandenesErgebnis liefert den Pfad eines Ergebnisses, das für diese
 // Quelle schon im output-Ordner liegt — umgewandelt oder umgepackt, egal mit
-// welcher Endung. Leer, wenn es keines gibt.
+// welcher Kennung, als MKV oder MP4. Leer, wenn es keines gibt.
 //
 // Das ist seit 0.11.0 die EINZIGE Erinnerung daran, dass eine Datei erledigt
 // ist (Nutzerwunsch 26.09.2026: kein "Logbuch", die Ordner entscheiden — wie
@@ -249,9 +255,11 @@ func VorhandenesErgebnis(quellPfad string, e Einstellungen) string {
 	ausgabe := filepath.Join(filepath.Dir(quellPfad), e.AusgabeOrdnerName)
 	for _, name := range namen {
 		for _, suffix := range ergebnisSuffixe {
-			kandidat := filepath.Join(ausgabe, name+suffix+zielEndung)
-			if _, err := os.Stat(kandidat); err == nil {
-				return kandidat
+			for _, endung := range ergebnisEndungen {
+				kandidat := filepath.Join(ausgabe, name+suffix+endung)
+				if _, err := os.Stat(kandidat); err == nil {
+					return kandidat
+				}
 			}
 		}
 	}
@@ -266,7 +274,7 @@ func OriginalPfadFuer(quellPfad string, e Einstellungen) string {
 // KandidatPruefen liest die Kopfdaten und fällt das Urteil, ob sich die Datei
 // lohnt. Es wird nichts heruntergeladen und nichts verändert.
 func KandidatPruefen(pfad string, e Einstellungen) Kandidat {
-	k := Kandidat{ZielPfad: ZielPfadFuer(pfad, e), Info: VideoInfo{Pfad: pfad}}
+	k := Kandidat{Info: VideoInfo{Pfad: pfad}}
 
 	// Zwischen Hineinziehen und Drankommen kann Zeit vergehen — etwa wenn ein
 	// anderes Fenster vorher dran war und die Datei schon verschoben hat.
