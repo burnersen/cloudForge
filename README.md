@@ -17,7 +17,9 @@ Das Original wird erst angefasst, wenn das Ergebnis fertig, geprüft und sicher 
 [![Lizenz: GPLv3](https://img.shields.io/badge/Lizenz-GPLv3-blue)](#-lizenz)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Unterst%C3%BCtzen-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/burnersen)
 
-**[⬇️ Neueste Fassung herunterladen](https://github.com/burnersen/cloudForge/releases/latest)** · **[📖 Ausführliche Anleitung](CloudForge-Installer/ANLEITUNG.txt)** · **[☕ Kaffee spendieren](https://ko-fi.com/burnersen)**
+**[⬇️ Neueste Fassung herunterladen](https://github.com/burnersen/cloudForge/releases/latest)** · **[📖 Ausführliche Anleitung](CloudForge-Installer/ANLEITUNG.txt)** · **[🌐 Webseite](https://tech.burnersen.de/tools/cloudforge/)** · **[☕ Kaffee spendieren](https://ko-fi.com/burnersen)**
+
+<sub>🇬🇧 In English: [tech.burnersen.de/en/tools/cloudforge-en](https://tech.burnersen.de/en/tools/cloudforge-en/)</sub>
 
 *Kostenlos für alle, privat wie beruflich – freie Software unter der [GPLv3](#-lizenz), Quelltext offen.*
 
