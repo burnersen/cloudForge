@@ -15,8 +15,9 @@ Das Original wird erst angefasst, wenn das Ergebnis fertig, geprüft und sicher 
 [![Erprobt mit pCloud Drive](https://img.shields.io/badge/Cloud-pCloud%20Drive-17BED0)](#-voraussetzungen)
 [![Geschrieben in Go](https://img.shields.io/badge/Geschrieben%20in-Go-00ADD8?logo=go)](#-selbst-bauen)
 [![Lizenz: GPLv3](https://img.shields.io/badge/Lizenz-GPLv3-blue)](#-lizenz)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Unterst%C3%BCtzen-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/burnersen)
 
-**[⬇️ Neueste Fassung herunterladen](https://github.com/burnersen/cloudForge/releases/latest)** · **[📖 Ausführliche Anleitung](CloudForge-Installer/ANLEITUNG.txt)** · **[🌐 Webseite](https://tech.burnersen.de/tools/cloudforge/)**
+**[⬇️ Neueste Fassung herunterladen](https://github.com/burnersen/cloudForge/releases/latest)** · **[📖 Ausführliche Anleitung](CloudForge-Installer/ANLEITUNG.txt)** · **[🌐 Webseite](https://tech.burnersen.de/tools/cloudforge/)** · **[☕ Kaffee spendieren](https://ko-fi.com/burnersen)**
 
 <sub>🇬🇧 In English: [tech.burnersen.de/en/tools/cloudforge-en](https://tech.burnersen.de/en/tools/cloudforge-en/)</sub>
 
@@ -243,3 +244,4 @@ CloudForge ist freie Software unter der [GNU General Public License, Version 3](
 ## 💬 Rückmeldung
 
 Fehler gefunden oder eine Idee? [Issue eröffnen](https://github.com/burnersen/cloudForge/issues).
+Und wenn dir CloudForge Platz und Zeit spart: [☕ Kaffee spendieren auf Ko-fi](https://ko-fi.com/burnersen).
