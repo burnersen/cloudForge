@@ -25,6 +25,8 @@ Das Original wird erst angefasst, wenn das Ergebnis fertig, geprüft und sicher 
 
 </div>
 
+> 💜 **Nutzt du CloudForge und es gefällt dir?** Ein ⭐ auf GitHub ist die einfachste Art, mir das zu sagen, und es bringt mehr, als man denkt: Sterne sind der sichtbare Beweis, dass ein Projekt gute Arbeit leistet, und darüber finden andere kleine Projekte wie dieses überhaupt erst Leute. Oder [erzähl mir, wofür du es nutzt](https://github.com/burnersen/cloudForge/issues/new), ich lese jede Nachricht. Danke, dass du da bist!
+
 ---
 
 **📑 Inhalt**
@@ -244,4 +246,9 @@ CloudForge ist freie Software unter der [GNU General Public License, Version 3](
 ## 💬 Rückmeldung
 
 Fehler gefunden oder eine Idee? [Issue eröffnen](https://github.com/burnersen/cloudForge/issues).
-Und wenn dir CloudForge Platz und Zeit spart: [☕ Kaffee spendieren auf Ko-fi](https://ko-fi.com/burnersen).
+
+---
+
+## ☕ Unterstützen
+
+CloudForge ist kostenlos und entsteht in meiner Freizeit, auf meiner eigenen Hardware und Stromrechnung. Wenn es dir Platz und Zeit gespart hat und du Danke sagen möchtest, kannst du [ein kleines Trinkgeld bei Ko-fi dalassen](https://ko-fi.com/burnersen), das hält die Schmiede heiß. 🔥 Völlig freiwillig, und in jedem Fall: danke fürs Benutzen!
