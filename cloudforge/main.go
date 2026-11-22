@@ -33,7 +33,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.22.0"
+const appVersion = "0.22.1"
 
 func main() {
 	err := starten()
