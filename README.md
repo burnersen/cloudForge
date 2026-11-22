@@ -44,6 +44,8 @@ Das Original wird erst angefasst, wenn das Ergebnis fertig, geprüft und sicher 
 
 ---
 
+> ⚠️ **Vorher lesen:** CloudForge ist kostenlose Hobby-Software ohne jede Gewähr, die Nutzung erfolgt auf eigene Gefahr. Umwandeln kostet immer etwas Qualität: von allem, was unersetzlich ist, vorher eine unabhängige Sicherung machen. Mehr im Haftungsausschluss am Ende.
+
 ## ✨ Was CloudForge macht
 
 CloudForge ist für große Video-Sammlungen in einem Cloud-Speicher gedacht, der auf einem Linux-Server als Ordner eingebunden ist (gebaut und erprobt mit **pCloud Drive**). Es wandelt die Videos in das platzsparende Format **AV1** um und misst dabei für jede Datei selbst nach, wie stark es komprimieren darf, damit das Bild gut bleibt. Das Ergebnis ist meistens nur noch halb so groß oder kleiner.
@@ -54,7 +56,7 @@ Bedient wird es ohne Terminal: Dateien oder ganze Ordner mit der Maus auf ein Sc
 - **Lohnt sich nicht? Dann nur umpacken** – ist eine Datei schon AV1, kleiner als 720p, schon sehr schlank oder würde sie kaum kleiner, wird sie verlustfrei umgepackt. Das Bild bleibt bitgleich.
 - **MKV oder MP4** – ab Werk MKV; auf Knopfdruck MP4, das iPhone und andere Apple-Geräte ohne Zusatz-App abspielen. Das Bild bleibt AV1, der Ton 1:1. Schon fertige MKV macht der Befehl `mkv2mp4` nachträglich verlustfrei zu MP4.
 - **Prüfkette** – Größe, Spieldauer, Ton- und Untertitelspuren werden mit dem Original verglichen; auf Wunsch wird jedes Ergebnis komplett durchgelesen.
-- **Abbrechen ist ungefährlich** – Fenster zu oder Strg+C: Halbfertiges verschwindet, das Original bleibt unberührt, Fertiges bleibt fertig.
+- **Abbrechen ist vorgesehen**: Fenster zu oder Strg+C, Halbfertiges wird weggeräumt, das Original fasst CloudForge dabei nicht an, Fertiges bleibt fertig.
 - **Nächste Datei vorab holen** – während ein Film umgewandelt wird, kommt der nächste schon aus der Cloud (spart etwa 3 Minuten je Film).
 - **Übersicht wie bei NVENCForge** – Fortschritt, Tempo, Restzeit und erwartete Größe; die Zeitschätzung lernt aus den letzten Filmen.
 - **Automatik und Zeitplan** – einen festen Ordner abarbeiten, auf Wunsch alle 30 Minuten von selbst, ganz ohne Fenster.
@@ -173,7 +175,9 @@ Die Einstellungen stehen in `~/cloudforge/cloudforge.ini`; jeder Eintrag ist dor
 
 Beim Start bringt CloudForge die Datei in Form: Reihenfolge und Erklärungen wie ab Werk, deine Werte bleiben. Weicht sie davon ab, liegt die vorherige Fassung danach als `cloudforge.ini.bak` daneben – mit eigenen Kommentaren und unbekannten Zeilen, die in der aufgeräumten Datei fehlen.
 
-## 🔒 Sicherheit für deine Originale
+## 🔒 So schützt CloudForge deine Originale
+
+So ist CloudForge gebaut. Eine eigene Sicherung von allem, was unersetzlich ist, ersetzt das nicht.
 
 - **Auf dem Cloud-Ordner wird nie gerechnet:** erst herunterkopieren, dann arbeiten, dann hochkopieren.
 - **Ein abgebrochener Upload sieht nie wie ein fertiges Ergebnis aus:** Dateien erscheinen erst vollständig unter ihrem richtigen Namen.
@@ -252,3 +256,9 @@ Fehler gefunden oder eine Idee? [Issue eröffnen](https://github.com/burnersen/c
 ## ☕ Unterstützen
 
 CloudForge ist kostenlos und entsteht in meiner Freizeit, auf meiner eigenen Hardware und Stromrechnung. Wenn es dir Platz und Zeit gespart hat und du Danke sagen möchtest, kannst du [ein kleines Trinkgeld bei Ko-fi dalassen](https://ko-fi.com/burnersen), das hält die Schmiede heiß. 🔥 Völlig freiwillig, und in jedem Fall: danke fürs Benutzen!
+
+## ⚠️ Haftungsausschluss
+
+CloudForge ist kostenlose Hobby-Software und wird **so, wie es ist, ohne jede Gewähr** bereitgestellt. Es ist mit Sorgfalt gebaut und getestet, die Nutzung erfolgt aber **auf eigene Gefahr**. Bewahre von allem, was unersetzlich ist, eine unabhängige Sicherung auf, bevor du es umwandelst: der Ordner `originals/` ist ein Sicherheitsnetz, keine Sicherung.
+
+Wo diese Anleitung beschreibt, was CloudForge tut, prüft oder nie tut, steht dort, wie es gedacht und gebaut ist, keine Zusage und keine Garantie: Software kann Fehler haben, und Systeme, Dienste und andere Programme verhalten sich nicht immer wie erwartet. Soweit gesetzlich zulässig, haftet der Autor nicht für Schäden oder Datenverlust durch die Nutzung dieser Software. Siehe Abschnitte 15 und 16 der [Lizenz](LICENSE).
